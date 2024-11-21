@@ -568,8 +568,8 @@ def opt_objective(trial, let_df, optuna_params, verbose=False):
     history = train_vae(
         let_df=let_df,
         verbose=verbose,
-        vae_plot_dir='/home/gallog/[04]_Python/98_wp6_vae_pytorch/opt_plot',
-        vae_history_dir='/home/gallog/[04]_Python/98_wp6_vae_pytorch/opt_history',
+        vae_plot_dir='../opt_plot',
+        vae_history_dir='../opt_history',
         **vae_params
     )
     
@@ -692,7 +692,7 @@ def train_vae(
         shuffle=False
     )
         
-    # VAE model parameters initialization ---> To be removed
+    # VAE model parameters initialization
     net_params= {
         'input_dim': n_feat_in,
         'hidden_layers_dim': net_size,
