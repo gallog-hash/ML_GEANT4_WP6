@@ -288,7 +288,7 @@ def plot_and_export(
     feature_list = [element + let_type_suffix for element in element_list]
     ylabel_single_element = "Let single elements [keV $\mu$m$^{-1}$]"
 
-    let_yscale = 'linear'
+    let_yscale = data_exploration_specs.get('let_yscale', 'linear')
     
     fig_list = myplt.plot_more_features(
         main_df, 
