@@ -185,7 +185,8 @@ def plot_and_export(
     ylabel_fontsize: int,
     yticks_fontsize: int,
     save_dir: str,
-    more_feat_figsize: tuple[float]=(12,14),
+    ions_let_figsize: tuple[float]=(12,14),
+    fluence_figsize: tuple[float=(12,14),
     more_df_figsize: tuple[float]=(17,10),
     subplot_specs: Union[dict, None]=None,
     secondary_let_df: Union[List[pd.DataFrame], None]=None,
@@ -218,8 +219,10 @@ def plot_and_export(
     - ylabel_fontsize (int): Font size for the Y-axis label.
     - yticks_fontsize (int): Font size for the Y-axis ticks.
     - save_dir (str): Directory where the plots will be saved.
-    - more_feat_figsize (tuple(float,float), optional): Size of single
-    elements plot. Default to (12, 14).
+    - ions_let_figsize (tuple(float,float)), optional): Size of ions let plot.
+      Default to (12, 14).
+    - fluence_figsize (tuple(float,float)), optional): Size of fluence plot.
+      Default to (12, 14).
     - more_df_figsize (tuple(float,float), optional): Size of more dataframe
     plot. Default to (17, 10).
     - subplot_specs (dict, optional): Specification for optional subplots
@@ -235,6 +238,9 @@ def plot_and_export(
     Returns:
     - None
     """
+    # Define let_label string
+    let_label = 'LTT' if let_type == 'track' else 'LDT'
+    
     # Plot the distribution of the primary particle to show where it stops.
     cfig = myplt.plot_feature_distribution(
         main_df, 
@@ -281,6 +287,8 @@ def plot_and_export(
     let_type_suffix = '_T' if let_type == 'track' else '_D'
     feature_list = [element + let_type_suffix for element in element_list]
     ylabel_single_element = "Let single elements [keV $\mu$m$^{-1}$]"
+
+    let_yscale = 'linear'
     
     fig_list = myplt.plot_more_features(
         main_df, 
@@ -291,8 +299,8 @@ def plot_and_export(
         marker_types=['.','v'],
         cut_in_um=cut_in_um, 
         voxel_in_um=voxel_in_um,
-        figsize=more_feat_figsize,
-        yscale='log',
+        figsize=ions_let_figsize,
+        yscale=let_yscale,
         n_feat_per_plot=n_features_per_plot,
         twin_ylabel=twin_ylabel,
         twin_plotlabel=twin_plotlabel,
@@ -309,7 +317,7 @@ def plot_and_export(
     )
     
     if export_plots:
-        filename = f"single_elements_yscale_log_c{int(cut_in_um)}_"
+        filename = f"single_elements_yscale_{let_yscale}_c{int(cut_in_um)}_"
         filename += f"v{int(voxel_in_um)}_d{int(xlim[-1])}.png"
         myplt.save_figure_to_file(fig_list, filename, save_dir)
     
@@ -322,7 +330,7 @@ def plot_and_export(
         marker_size=9, 
         cut_in_um=cut_in_um, 
         voxel_in_um=voxel_in_um,
-        figsize=more_feat_figsize,
+        figsize=ions_let_figsize,
         yscale='log',
         twin_ylabel=twin_ylabel,
         twin_plotlabel=twin_plotlabel,
@@ -344,20 +352,20 @@ def plot_and_export(
         myplt.save_figure_to_file(cfig, filename, save_dir)
 
     # Prepare feature list for fluence plot
-    fluence_feat_list = [f.replace('_T', '_f') for f in feature_list]
+    fluence_feat_list = [f.replace(let_type_suffix, '_f') for f in feature_list]
     
     # Plot fluence of the selected elements
     fig_list = myplt.plot_more_features(
         fluence_df, 
         dose_profile=dose_profile, 
-        let_total_profile=main_df[['x', 'LTT']].copy(),
+        let_total_profile=main_df[['x', let_label]].copy(),
         feature_list=fluence_feat_list,
         ylabel="Fluence [counts]",
         marker_size=25, 
         marker_types=['.','v'],
         cut_in_um=cut_in_um, 
         voxel_in_um=voxel_in_um,
-        figsize=more_feat_figsize,
+        figsize=fluence_figsize,
         yscale='log',
         n_feat_per_plot=n_features_per_plot,
         twin_ylabel=twin_ylabel,
@@ -572,8 +580,9 @@ def opt_objective(trial, let_df, optuna_params, verbose=False):
         vae_history_dir='../opt_history',
         **vae_params
     )
-    
-    vae_loss = history['val_loss'][-1]
+
+    # Extract the final validation loss
+    vae_loss = history['val_losses'][-1]
     
     return vae_loss # Minimizing the VAE loss
 
@@ -638,11 +647,18 @@ def train_vae(
             single_scaler=single_scaler, 
             scaler_type='standard'
         )
+
+    if any('LTT' in col for col in let_df.columns):
+        let_label = 'LTT'
+    elif any('LDT' in col for col in let_df.columns):
+        let_label = 'LDT'
+    else:
+        let_label = 'Unknown'  # Optional fallback value
         
     # Plot how the dataset was splitted into train, test, and validation datasets
     myplt.plot_train_test_val_distribution(
         df_before_split = let_df,
-        feature_names = ['x', 'LTT'],
+        feature_names = ['x', let_label],
         X_train = X_train,
         X_test = X_test,
         X_val = X_val,
@@ -787,7 +803,7 @@ def train_vae(
         input_tensor = torch.rand(
             train_loader.dataset.data.shape[0], n_feat_in).to(device) 
         output_tensor = vae(input_tensor)
-        # - Generate the graph      ---> To be removed
+        # - Generate the graph
         dot = make_dot(output_tensor, params=dict(vae.named_parameters()))
         dot.attr(rankdir='LR') # set the rank direction ('TP' or 'LR')
         dot.attr(dpi='300') # set the DPI
@@ -965,13 +981,11 @@ def main(
     data_dir='../data/t96_1e8_c1000_v100_d50',
     data_file='Let_1000-100.out',
     dose_file='Dose_1000-100.out',
+    data_exploration_specs=None,
     subplot_specs=None,
-    more_feat_figsize=None,
-    n_elements_per_plot=1,
     secondary_data_dirs=None,
     secondary_data_files=None,
     secondary_dose_files=None,
-    more_df_figsize=None,
     df_labels=None,
     let_type='track',
     element_list=None,
@@ -1031,6 +1045,25 @@ def main(
     dose_file : str, optional
         File containing dose profile and fluence distributions (default is
         'Dose_1000-100.out'). 
+
+    data_exploration_specs : dict, optional  
+        Dictionary specifying parameters for data exploration plots related to
+        LET and fluence. The dictionary can include the following keys:   
+        - 'let_yscale' (str): Y-axis scale for LET plots. Options are 'linear'
+        or 'log'.   
+        - 'fluence_yscale' (str): Y-axis scale for fluence plots. Options are
+        'linear' or 'log'.   
+        - 'primary_figsize' tuple(float, float): Size of the figure for the
+        primary particle LET plot, specified as `(width, height)`.   
+        - 'ions_let_figsize' tuple(float, float): Size of the figure for
+        secondary ions LET plots, specified as `(width, height)`.   
+        - 'fluence_figsize' tuple(float, float): Size of the figure for fluence
+        plots, specified as `(width, height)`.   
+        - 'n_elements_per_plot' (int): Number of elements to include in each
+        subplot.   
+        - 'more_df_figsize' tuple(float, float): Size of the figure when
+        plotting data from two or more dataframes, specified as `(width,
+        height)`.   
         
     subplot_specs : dict, optional
         Specifications for subplot arrangement, with keys: 
@@ -1043,12 +1076,6 @@ def main(
         - 'let_prof_x_range': List of two floats defining the x-axis range for
         LET profile plot. 
         
-    more_feat_figsize : tuple, optional
-        Figure size for plotting additional features (default is None).
-        
-    n_elements_per_plot : int, optional
-        Number of elements to plot per subplot (default is 1).
-        
     secondary_data_dirs : list of str, optional
         List of directories containing secondary LET data files (default is None).
         
@@ -1058,9 +1085,6 @@ def main(
     secondary_dose_files : list of str, optional
         List of secondary dose files for each secondary LET data file (default
         is None). 
-        
-    more_df_figsize : tuple, optional
-        Figure size for additional dataframes (default is None).
         
     df_labels : list of str, optional
         Labels for secondary data frames (default is None).
@@ -1138,6 +1162,18 @@ def main(
         vae_plot_dir = os.getcwd()
     if vae_history_dir is None:
         vae_history_dir = os.getcwd()
+
+    # Initialize an empty dictionary if None is passed.
+    if data_exploration_specs is None: 
+        data_exploration_specs = {} 
+    if optuna_params is None:
+        optuna_params = {} 
+    if subplot_specs is None:
+        subplot_specs = {}
+    if outliers_params is None:
+        outliers_params = {}
+    if vae_params is None:
+        vae_params = {}
         
     change_default_settings(seed=random_seed)
 
@@ -1152,7 +1188,6 @@ def main(
     except OSError as e:
         print(f"Data import failed: {e}")
         return
-        
 
     if verbose > 0:
         print("DataFrame with loaded data from file: ", dataset_identifier)
@@ -1162,6 +1197,12 @@ def main(
     
     # Define the primary particle shot in the Geant4 simulation
     primary_pattern = 'proton_1'
+
+    # Define let_label string
+    let_label = 'LTT' if let_type == 'track' else 'LDT'
+    
+    # Define primary particle feature name
+    primary_feature_name = 'proton_1_T' if let_type == 'track' else 'proton_1_D'
     
     df_non_zero, zero_thr_percent, primary_zero_perc, percentage_eq_to_zero_df = \
         mandatory_let_df_manipulation(
@@ -1297,7 +1338,7 @@ def main(
             df=df_non_zero,
             x_threshold=primary_x_stop_mm
         )
-        perc_non_zero_after_pp.drop(labels=['x', 'LTT'], inplace=True)
+        perc_non_zero_after_pp.drop(labels=['x', let_label], inplace=True)
         perc_non_zero_after_pp = 100.0 - perc_non_zero_after_pp
         print("\nPercent of non-zero values after primary particle stop:")
         for index, value in perc_non_zero_after_pp.nlargest(15).items():
@@ -1344,7 +1385,7 @@ def main(
             left_data=percentage_eq_to_zero_df_squeezed,
             right_data=let_total_corr_df,
             left_ylabel='Percentage of zero values',
-            right_ylabel='Correlation with LTT',
+            right_ylabel=f'Correlation with {let_label}',
             xlabel='Non-zero Features',
             cut_in_um=cut_in_um, 
             voxel_in_um=voxel_in_um,
@@ -1404,11 +1445,6 @@ def main(
             print(fluence_df.head())
             print("\nPercentage of null values in fluence DataFrame:") 
             print(percentage_zero_fluence.sort_index())
-            
-        element_list = ['O18', 'O16', 'O15', 'N16', 'N15',  
-                'N14', 'C13', 'C12', 'B11', 'Be9', 
-                'Li6', 'alpha', 'triton', 'deuteron', 'proton', 
-                'proton_1']
         
         # Load secondary data files if available
         if secondary_data_dirs:           
@@ -1472,25 +1508,28 @@ def main(
                     
                     # Append to the list of secondary dose data
                     secondary_dose_df.append(dose_temp)
-                    
-            if more_df_figsize is None:
-                more_df_figsize = (17, 10) # best for one plot in a slide
         
         else:
             secondary_let_df = None
             secondary_dose_df = None
         
-        if more_feat_figsize is None:
-            more_feat_figsize = (14, 12) # best for two plots in a slide
+        ions_let_figsize_input = \
+            data_exploration_specs.get('ions_let_figsize', (12, 14))
+        fluence_figsize_input = \
+            data_exploration_specs.get('fluence_figsize', (17, 10))
+        n_features_per_plot_input = \
+            data_exploration_specs.get('n_elements_per_plot', 1)
+        more_df_figsize_input = \
+                data_exploration_specs.get('more_df_figsize', (12, 14))
                     
         plot_and_export(
             main_df=df_non_zero,
             dose_profile=dose_profile,
             fluence_df=fluence_df,
             let_type=let_type,
-            feature_on_single_plot='proton_1_T',
+            feature_on_single_plot=primary_feature_name,
             element_list=element_list, 
-            n_features_per_plot=n_elements_per_plot,
+            n_features_per_plot=n_elements_per_plot_input,
             primary_x_stop_mm=primary_x_stop_mm,
             cut_in_um=cut_in_um, 
             voxel_in_um=voxel_in_um,
@@ -1505,8 +1544,9 @@ def main(
             yticks_fontsize=15, 
             save_dir=eda_plot_dir,
             export_plots=export_plots,
-            more_feat_figsize=more_feat_figsize,
-            more_df_figsize=more_df_figsize,
+            ions_let_figsize=ions_let_figsize_input,
+            fluence_figsize=fluence_figsize_input,
+            more_df_figsize=more_df_figsize_input,
             subplot_specs=subplot_specs,
             secondary_let_df=secondary_let_df,
             secondary_dose_df=secondary_dose_df,
@@ -1575,11 +1615,11 @@ def main(
             df_early_stop = data_eng.replace_outliers_in_df(
                 df_early_stop, 
                 outliers_replacements_df,
-                'LTT'
+                let_label
             )
         
         if verbose > 0:
-            replacement_column = 'LTT'+'_is_replacement'
+            replacement_column = f'{let_label}_is_replacement'
             # Check if a replacement has been made
             if replacement_column not in df_early_stop.columns:
                 print("\nNo value replaced.")
@@ -1624,6 +1664,16 @@ def main(
     
     
 if __name__ == '__main__':
+
+    data_exploration_specs ={
+        'let_yscale': 'linear',
+        'fluence_yscale': 'log',
+        'primary_figsize': (12, 7),
+        'ions_let_figsize': (12, 14), # or (17, 10)
+        'fluence_figsize': (17,10), # or (12, 14)
+        'n_elements_per_plot': 1,
+        'more_df_figsize': (17,10),
+    }
 
     subplot_specs_60_mev = {
         'feat_dist_location': [0.2, 0.35, 0.25, 0.50],
@@ -1708,14 +1758,12 @@ if __name__ == '__main__':
         data_dir='../data/t96_1e8_c1000_v1_d50',
         data_file='Let_1000-1.out',
         dose_file='Dose_1000-1.out',
+        data_exploration_specs=data_exploration_specs,
         subplot_specs=subplot_specs_60_mev,
-        more_feat_figsize=(17, 10),
-        n_elements_per_plot=1,
         # secondary_data_dirs='../data/t96_1e8_c1000_v1_d50',
         # secondary_data_files='Let_1000-1.out',
         # secondary_dose_files='Dose_1000-1.out',
         # df_labels=labels,
-        # more_df_figsize=(17,10),
         let_type='track',
         element_list=element_list,
         eda_xlim=(0.0, None), # (None, None) is for automatically generated xlim
