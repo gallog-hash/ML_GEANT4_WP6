@@ -186,7 +186,7 @@ def plot_and_export(
     yticks_fontsize: int,
     save_dir: str,
     ions_let_figsize: tuple[float]=(12,14),
-    fluence_figsize: tuple[float=(12,14),
+    fluence_figsize: tuple[float]=(12,14),
     more_df_figsize: tuple[float]=(17,10),
     subplot_specs: Union[dict, None]=None,
     secondary_let_df: Union[List[pd.DataFrame], None]=None,
@@ -541,92 +541,178 @@ def outliers_search(
     # Return the selected DataFrame
     return outliers_replacements_df
 
-def opt_objective(trial, let_df, optuna_params, verbose=False):
-    
-    input_data_shape = let_df.shape
-    n_feat_in = input_data_shape[1]
-    
-    # Use optuna_params to define each parameter search space
-    learning_rate = trial.suggest_float('learning_rate', 
-                                        *optuna_params['learning_rate'],
-                                        log=True)
-    batch_size = trial.suggest_categorical('batch_size', 
-                                          optuna_params['batch_size'])
-    ld_scaling = trial.suggest_int('ld_scaling', 
-                                   *optuna_params['latent_dim_scaling'])
-    latent_dim = [n_feat_in // ld_scaling] 
-    ns_upsample = trial.suggest_int('ns_upsample', 
-                                    *optuna_params['net_size_upsample'])
-    ns_scaling = trial.suggest_int('ns_scaling', 
-                                   *optuna_params['net_size_scaling'])
-    net_size = [n_feat_in**ns_upsample // ns_scaling, 
-                n_feat_in**ns_upsample // ns_scaling, 
-                n_feat_in**ns_upsample // ns_scaling]
-    epochs = trial.suggest_categorical('epochs', optuna_params['epochs'])
-    
-    vae_params = {
-        'learning_rate': learning_rate,
-        'batch_size': batch_size,
-        'latent_dim': latent_dim,
-        'net_size': net_size,
-        'epochs': epochs,
-    }
-    
-    # Call the training function and obtain loss
-    history = train_vae(
-        let_df=let_df,
-        verbose=verbose,
-        vae_plot_dir='../opt_plot',
-        vae_history_dir='../opt_history',
-        **vae_params
-    )
+def opt_objective(
+    trial, 
+    let_df, 
+    X_train_scaled,
+    X_val_scaled,
+    X_test_scaled,
+    scaler,
+    optuna_params, 
+    vae_params, 
+    vae_plot_dir='../opt_plot',
+    vae_history_dir='../opt_history',
+    verbose=True
+) -> float:
+    """
+    Optimization objective for tuning VAE hyperparameters using Optuna.
 
-    # Extract the final validation loss
-    vae_loss = history['val_losses'][-1]
-    
-    return vae_loss # Minimizing the VAE loss
+    Args:
+        trial (optuna.Trial): Current trial object from Optuna.
+        let_df (pd.DataFrame): Input dataset for training.
+        X_train_scaled (pd.DataFrame): Scaled training dataset.
+        X_val_scaled (pd.DataFrame): Scaled validation dataset.
+        X_test_scaled (pd.DataFrame): Scaled test dataset.
+        scaler (object): Scaler used for data preprocessing.
+        optuna_params (dict): Parameter search spaces for Optuna trials.
+            Expected keys:
+                - 'learning_rate': Tuple[float, float] for log-uniform sampling.
+                - 'batch_size': List[int] for categorical sampling.
+                - 'latent_dim_scaling': Tuple[int, int] for integer scaling of
+                  latent dimensions. 
+                - 'net_size_upsample': Tuple[int, int] for network size upscaling.
+                - 'net_size_scaling': Tuple[int, int] for scaling network layer sizes.
+                - 'epochs': List[int] for categorical sampling of epochs.
+        vae_params (dict): Default parameters for VAE model.
+        vae_plot_dir (str): Directory for saving VAE plot results. Default is
+        '../opt_plot'. 
+        vae_history_dir (str): Directory for saving VAE history. Default is
+        '../opt_history'. 
+        verbose (bool): Whether to display debugging information. Default is True.
 
-def train_vae(
-    let_df,
+    Returns:
+        float: Final validation loss for the trial, to be minimized.
+    """
+    try:
+        # Track the shape of the input data
+        input_data_shape = let_df.shape
+        n_feat_in = input_data_shape[1]
+        print(f"Input data shape: {input_data_shape}, Number of features: {n_feat_in}")
+        
+        # Hyperparameter suggestions from Optuna
+        learning_rate = trial.suggest_float(
+            'learning_rate', 
+            *optuna_params['learning_rate'], 
+            log=True
+        )
+        batch_size = trial.suggest_categorical(
+            'batch_size', 
+            optuna_params['batch_size']
+        )
+        ld_scaling = trial.suggest_int(
+            'ld_scaling', 
+            *optuna_params['latent_dim_scaling']
+        )
+        latent_dim = trial.suggest_int(
+            'latent_dim', 
+            n_feat_in // ld_scaling, n_feat_in // ld_scaling
+        )     
+        num_layers = trial.suggest_int('num_layers', 2, 5)
+        max_layer_size = n_feat_in**optuna_params['net_size_upsample'] // \
+            optuna_params['net_size_scaling']  # Maximum size for the first layer
+        min_layer_size = n_feat_in   # Minimum size for the smallest layer
+        net_size = []
+        for i in range(num_layers):
+            upper_bound = max_layer_size if i == 0 else net_size[-1]  
+            layer_size = trial.suggest_int(
+                f'layer_{i}_size', min_layer_size, upper_bound, step=32)
+            net_size.append(layer_size)
+        epochs = trial.suggest_categorical(
+            'epochs', 
+            optuna_params['epochs']
+        )
+        
+        # Debugging information
+        if verbose:
+            print("\n--- Hyperparameters for this trial ---")
+            print(f"Learning rate: {learning_rate}")
+            print(f"Batch size: {batch_size}")
+            print(f"Latent dimension scaling: {ld_scaling}")
+            print(f"Latent dimensions: {latent_dim}")
+            print(f"Net sizes: {net_size}")
+            print(f"Number of epochs: {epochs}")
+            print("--------------------------------------\n")
+        
+        # Update VAE parameters
+        vae_params_opt = vae_params.copy()
+        vae_params_opt.update({
+            'learning_rate': learning_rate,
+            'batch_size': batch_size,
+            'latent_dim': [latent_dim],
+            'net_size': net_size,
+            'training_epochs': epochs,
+        })
+        
+        # Create DataLoaders
+        data_loaders = create_data_loaders_from_dataframes(
+            X_train_scaled=X_train_scaled,
+            X_val_scaled=X_val_scaled,
+            X_test_scaled=X_test_scaled,
+            batch_size=batch_size,
+        )
+        
+        # Train VAE
+        history = train_vae(
+            let_df=let_df,
+            train_loader=data_loaders['train_loader'],
+            val_loader=data_loaders['val_loader'],
+            test_loader=data_loaders['test_loader'],
+            scaler=scaler,
+            verbose=0,
+            vae_plot_dir=vae_plot_dir,
+            vae_history_dir=vae_history_dir,
+            **vae_params_opt
+        )
+        
+        # Extract the final validation loss
+        vae_loss = history['val_losses'][-1] if history['val_losses'] else float('inf')
+        if verbose:
+            print(f"Validation loss for this trial: {vae_loss}")
+        
+        return vae_loss # Minimizing the VAE loss
+    
+    except Exception as e:
+        print(f"Error during trial: {e}")
+        return float('inf')
+
+def split_and_scale_dataset(
+    let_df: pd.DataFrame,
     verbose,
-    vae_plot_dir,
-    vae_history_dir,
     **kwargs
-):
-    input_data_shape = let_df.shape
-    n_feat_in = input_data_shape[1]
-       
+) -> tuple:
+    """
+    Splits the dataset into training, validation, and test subsets and scales
+    them. 
+
+    Args:
+        let_df (pd.DataFrame): Input dataset.
+        verbose (bool): Whether to display plots showing the data split.
+
+    Keyword Args:
+        - train_size (float): Proportion of data to use for training. Default is
+          0.7. 
+        - val_size (float): Proportion of data to use for validation. Default is
+          0.2. 
+        - test_size (float): Proportion of data to use for testing. Default is
+          0.1. 
+        - single_scaler (bool): Whether to use a single scaler for all splits.
+          Default is True. 
+
+    Returns:
+        tuple: Scaled training, validation, and test datasets, along with the
+        scaler used. 
+    """
     # Default parameters
     default_train_size = 0.7 
     default_val_size = 0.2 
     default_test_size = 1 - default_train_size - default_val_size
     default_single_scaler = True
-    default_batch_size = 100
-    default_net_size = [n_feat_in**2 // 2, n_feat_in**2 // 2, n_feat_in**2// 2]
-    default_latent_dim = n_feat_in // 2
-    default_normalization = nn.BatchNorm1d
-    default_activation = nn.ReLU
-    default_output_activation = nn.ReLU
-    default_learning_rate = 1e-4
-    default_penalty_L2 = 0 
-    default_training_epochs = 100
-    default_train_report_every = 10
-    
+
     # Retrieve parameters from kwargs or use defaults
     train_size = kwargs.get('train_size', default_train_size)
     val_size = kwargs.get('val_size', default_val_size)
     test_size = kwargs.get('test_size', default_test_size)   
     single_scaler = kwargs.get('single_scaler', default_single_scaler)
-    batch_size = kwargs.get('batch_size', default_batch_size) 
-    net_size = kwargs.get('net_size', default_net_size)
-    latent_dim = kwargs.get('letent_dim', default_latent_dim)
-    normalization = kwargs.get('normalization', default_normalization)
-    activation = kwargs.get('activation', default_activation)
-    output_activation = kwargs.get('output_activation', default_output_activation)
-    learning_rate = kwargs.get('learning_rate', default_learning_rate)
-    penalty_L2 = kwargs.get('penalty_L2', default_penalty_L2)
-    training_epochs = kwargs.get('training_epochs', default_training_epochs)
-    train_report_every = kwargs.get('train_report_every', default_train_report_every)
     
     # Split the dataset into train, validation nad test subsets
     X_train, X_val, X_test = my_ml_prep.train_val_test_split(
@@ -638,60 +724,66 @@ def train_vae(
         shuffle=True        # Whether to shuffle the dataset before splitting
     )
     
-    # Apply scaling to the train, validation and test subsets
+    # Scale the datasets
     X_train_scaled, X_val_scaled, X_test_scaled, scaler = \
         my_ml_prep.train_val_test_scale(
-            training_data=X_train,    
+            training_data=X_train,
             validation_data=X_val,
             test_data=X_test,
-            single_scaler=single_scaler, 
+            single_scaler=single_scaler,
             scaler_type='standard'
         )
-
-    if any('LTT' in col for col in let_df.columns):
-        let_label = 'LTT'
-    elif any('LDT' in col for col in let_df.columns):
-        let_label = 'LDT'
-    else:
-        let_label = 'Unknown'  # Optional fallback value
         
-    # Plot how the dataset was splitted into train, test, and validation datasets
-    myplt.plot_train_test_val_distribution(
-        df_before_split = let_df,
-        feature_names = ['x', let_label],
-        X_train = X_train,
-        X_test = X_test,
-        X_val = X_val,
-    )      
-    
-    # Convert data arrays into DataLoader
-    #
-    # In this section, we're converting our training, validation, and test
-    # datasets (`X_train`, `X_val`, and `X_test`) into PyTorch DataLoader
-    # objects. This step is crucial for efficiently handling our data during
-    # model training and evaluation. 
-    #
-    # By converting our data into DataLoader objects, we're enabling batch
-    # processing, which enhances the efficiency of our model training process.
-    # DataLoader allows us to iterate over our datasets in mini-batches, rather
-    # than processing the entire dataset at once. This not only conserves memory
-    # but also facilitates parallel processing, leading to faster training
-    # times.  
-    #
-    # Additionally, DataLoader provides built-in functionality for shuffling our
-    # data, which is essential for preventing the model from learning sequential
-    # patterns and biases in the data. This ensures that our model generalizes
-    # well to unseen data. 
-    #
-    # Overall, converting our data to DataLoader objects is a key preprocessing
-    # step that sets the stage for efficient and effective model training and
-    # evaluation. 
-    
+    if verbose:
+        if any('LTT' in col for col in let_df.columns):
+            let_label = 'LTT'
+        elif any('LDT' in col for col in let_df.columns):
+            let_label = 'LDT'
+        else:
+            let_label = 'Unknown'  # Optional fallback value
+            
+        # Plot how the dataset was splitted 
+        myplt.plot_train_test_val_distribution(
+            df_before_split = let_df,
+            feature_names = ['x', let_label],
+            X_train = X_train,
+            X_test = X_test,
+            X_val = X_val,
+        )   
+        
+    return X_train_scaled, X_val_scaled, X_test_scaled, scaler
+
+def create_data_loaders_from_dataframes(
+    X_train_scaled: pd.DataFrame,
+    X_val_scaled: pd.DataFrame,
+    X_test_scaled: pd.DataFrame,
+    batch_size: int = 100,
+    shuffle_train: bool = False,
+    shuffle_val_test: bool = False,
+) -> dict:
+    """
+    Creates PyTorch DataLoaders from scaled dataframes.
+
+    Args:
+        X_train_scaled (pd.DataFrame): Scaled training dataset.
+        X_val_scaled (pd.DataFrame): Scaled validation dataset.
+        X_test_scaled (pd.DataFrame): Scaled test dataset.
+        batch_size (int, optional): Batch size for the DataLoaders. Default is
+        100. 
+        shuffle_train (bool, optional): Whether to shuffle the training dataset.
+        Default is False. 
+        shuffle_val_test (bool, optional): Whether to shuffle the validation and
+        test datasets. Default is False. 
+
+    Returns:
+        dict: Dictionary containing DataLoaders for train, validation, and test
+        datasets. 
+    """
     train_loader = my_ml_prep.create_data_loader(
         data=X_train_scaled,
         data_type='train',
         batch_size=batch_size,
-        shuffle=False
+        shuffle=shuffle_train
     )
 
     val_loader = my_ml_prep.create_data_loader(
@@ -705,10 +797,179 @@ def train_vae(
         data=X_test_scaled,
         data_type='test',
         batch_size=batch_size,
-        shuffle=False
+        shuffle=shuffle_val_test
     )
+    
+    return {
+        'train_loader': train_loader,
+        'val_loader': val_loader,
+        'test_loader': test_loader
+    }
+
+
+def prepare_data_loaders(
+    let_df,
+    verbose,
+    **kwargs
+):
+    """"
+    Prepares DataLoaders for training, validation, and test data.
+
+    Args:
+        let_df (pd.DataFrame): Input dataset.
+        verbose (bool): Whether to display plots showing the data split.
+
+    Keyword Args:
+        train_size (float): Proportion of data to use for training. Default is
+        0.7. 
+        val_size (float): Proportion of data to use for validation. Default is
+        0.2. 
+        test_size (float): Proportion of data to use for testing. Default is
+        0.1. 
+        single_scaler (bool): Whether to use a single scaler for all splits.
+        Default is True. 
+        batch_size (int): Batch size for the DataLoaders. Default is 100.
+
+    Returns:
+        dict: Dictionary containing train, validation, and test DataLoaders,
+        along with the scaler used. 
+    """
+    # Split and scale the dataset
+    X_train_scaled, X_val_scaled, X_test_scaled, scaler = split_and_scale_dataset(
+        let_df=let_df,
+        verbose=verbose,
+        **kwargs
+    )
+    
+    # Create DataLoaders
+    data_loaders = create_data_loaders_from_dataframes(
+        X_train_scaled=X_train_scaled,
+        X_val_scaled=X_val_scaled,
+        X_test_scaled=X_test_scaled,
+        batch_size=kwargs.get('batch_size', 100),
+    )
+    
+    # Add scaler to the returned dictionary
+    data_loaders['scaler'] = scaler
+
+    return data_loaders
+
+def train_vae(
+    let_df,
+    train_loader,
+    val_loader,
+    test_loader,
+    scaler,
+    verbose,
+    vae_plot_dir,
+    vae_history_dir,
+    **kwargs
+):
+    """
+    Trains a Variational Autoencoder (VAE) model using preprocessed data.
+
+    This function initializes a VAE model, trains it on the provided training
+    data, validates it using validation data, and evaluates it on the test set. 
+    It also generates various outputs such as plots, model summaries, and
+    training history. 
+
+    Args:
+    - let_df (pd.DataFrame): Original input dataset used to determine input
+      features.  
+    - train_loader (torch.utils.data.DataLoader): DataLoader for training data.
+    - val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
+    - test_loader (torch.utils.data.DataLoader): DataLoader for test data.
+    - scaler (object): Scaler used to normalize the data, required for
+      reconstruction plotting. 
+    - verbose (int): Verbosity level for logging and visualization.
+        - 0: Minimal output.
+        - 1: Includes DataLoader details and model parameter summary.
+        - 2: Additionally visualizes the computation graph.
+    - vae_plot_dir (str): Directory path to save generated plots (e.g., latent
+      space, loss curves). 
+    - vae_history_dir (str): Directory path to save the trained model and
+      training history. 
+    - **kwargs: Additional parameters for configuring the VAE model and training
+      process: 
+        - `net_size` (list[int]): Hidden layer sizes for the VAE encoder and
+          decoder (default: [n_features² / 2, n_features² / 2, n_features² /
+          2]).
+        - `latent_dim` (int): Dimension of the latent space (default: n_features
+          / 2). 
+        - `normalization` (callable): Normalization layer (e.g.,
+          `nn.BatchNorm1d`). 
+        - `activation` (callable): Activation function for hidden layers
+          (default: `nn.ReLU`). 
+        - `output_activation` (callable): Activation for output layers (default:
+          `nn.ReLU`). 
+        - `learning_rate` (float): Learning rate for the optimizer (default:
+          1e-4). 
+        - `penalty_L2` (float): L2 regularization weight (default: 0).
+        - `training_epochs` (int): Number of epochs to train (default: 100).
+        - `train_report_every` (int): Frequency of reporting progress (default:
+          10). 
+
+    Returns:
+        dict: Training history containing loss metrics for each epoch.
+
+    Side Effects:
+        - Saves the VAE model and training history to `vae_history_dir`.
+        - Exports a text file with the model summary.
+        - Saves various plots to `vae_plot_dir`, including:
+            - Latent space visualization.
+            - Training and validation loss curves.
+            - Comparison of test data and VAE-reconstructed data.
+            - VAE computation graph (if `verbose > 1`).
+
+    Notes:
+        - The VAE is trained on the GPU if available, otherwise defaults to CPU.
+        - The function includes extensive visualizations for debugging and
+          analysis. 
+        - DataLoaders should be prepared using an external preprocessing
+          pipeline to ensure consistent scaling and splitting.
+
+    Example Usage:
+        >>> history = train_vae(
+                let_df=dataset,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
+                scaler=scaler,
+                verbose=2,
+                vae_plot_dir="./plots/",
+                vae_history_dir="./history/",
+                net_size=[128, 64, 32],
+                latent_dim=16,
+                learning_rate=0.001
+            )
+    """
+    
+    input_data_shape = let_df.shape
+    n_feat_in = input_data_shape[1]
+       
+    # Default parameters
+    default_net_size = [n_feat_in**2 // 2, n_feat_in**2 // 2, n_feat_in**2// 2]
+    default_latent_dim = n_feat_in // 2
+    default_normalization = nn.BatchNorm1d
+    default_activation = nn.ReLU
+    default_output_activation = nn.ReLU
+    default_learning_rate = 1e-4
+    default_penalty_L2 = 0 
+    default_training_epochs = 100
+    default_train_report_every = 10
+    
+    # Retrieve parameters from kwargs or use defaults
+    net_size = kwargs.get('net_size', default_net_size)
+    latent_dim = kwargs.get('letent_dim', default_latent_dim)
+    normalization = kwargs.get('normalization', default_normalization)
+    activation = kwargs.get('activation', default_activation)
+    output_activation = kwargs.get('output_activation', default_output_activation)
+    learning_rate = kwargs.get('learning_rate', default_learning_rate)
+    penalty_L2 = kwargs.get('penalty_L2', default_penalty_L2)
+    training_epochs = kwargs.get('training_epochs', default_training_epochs)
+    train_report_every = kwargs.get('train_report_every', default_train_report_every)
         
-    # VAE model parameters initialization
+    # VAE model parameters initialization 
     net_params= {
         'input_dim': n_feat_in,
         'hidden_layers_dim': net_size,
@@ -718,7 +979,7 @@ def train_vae(
         'output_activation': output_activation,
     }    
     
-    # Adam Optimizer parameters
+    # Adam Optimizer parameters 
     optimizer_params = {
         'lr1': learning_rate,
         'l2_reg1': penalty_L2, # try 1e-4, default is 0
@@ -731,13 +992,13 @@ def train_vae(
         device=device
     ).to(device)
     
-    # Create model summary
+    # Create model summary 
     vae_summary = summary(model=vae, input_size=(1, n_feat_in), depth=4)
     
-    # Get the rapresentation of the summary as a string
+    # Get the rapresentarion of the summary as a string
     summary_str = str(vae_summary)
     
-    # Export the model summary to a file
+    # Export the model summary to a file 
     summary_filename = 'model_summary.txt'
     with open(summary_filename, 'w') as file:
         file.write(summary_str)
@@ -751,7 +1012,7 @@ def train_vae(
         show_every=train_report_every
     )
     
-    # Plot both training and validation losses on the same plot
+    # Plot both training and validation losses on the same plot 
     my_autoenc.plot_history(
         history,
         train_losses = True,
@@ -763,7 +1024,7 @@ def train_vae(
         x_mse_losses_recon = False,
     )
     
-    # Export model parameters and history
+    # Export model parameters and history 
     my_autoenc.save_model_and_history(
         model=vae,
         history=history,
@@ -782,9 +1043,9 @@ def train_vae(
         scaler=scaler,    
         train_data=train_loader,
     )
-       
+    
     if verbose > 0:
-        print("\nType ans shape of DataLoaders.dataset: ")
+        print("\nType and shape of DataLoaders.dataset: ")
         print(f" - train: {type(train_loader.dataset.data)}, ", end='')
         print(f"{train_loader.dataset.data.shape}")
         print(f" - validation: {type(val_loader.dataset.data)}, ", end='')
@@ -978,6 +1239,7 @@ def main(
     optimize_vae=False,
     n_trials=50,
     optuna_params=None,
+    cut_with_primary=False,
     data_dir='../data/t96_1e8_c1000_v100_d50',
     data_file='Let_1000-100.out',
     dose_file='Dose_1000-100.out',
@@ -1034,6 +1296,10 @@ def main(
         names, and values specify either a range (as a tuple for continuous 
         values, e.g., (0.001, 0.1) for a learning rate) or a list of possible 
         choices for categorical parameters (e.g., [16, 32, 64] for batch size).
+        
+    cut_with_primary : bool, optional
+        Whether to truncate the dataset where the primary particles stop
+        (default is False).
         
     data_dir : str, optional
         Directory containing the primary LET data files (default is
@@ -1297,11 +1563,28 @@ def main(
     # [Calling this method after dropping columns full of null values and
     # squeezing the remaining ones ensures that there is a single primary
     # particle column in the DataFrame.] 
-    df_early_stop = eda.cut_dataframe_with_primary(
-        df_non_zero, column_type=let_type,                             
-        primary_particle='proton')
-    
-    primary_x_stop_mm = df_early_stop['x'].iloc[-1]
+    if cut_with_primary:
+        df_processed = eda.cut_dataframe_with_primary(
+            df_non_zero, column_type=let_type,                             
+            primary_particle='proton'
+            )
+        description = "Truncated based on primary particle."
+        primary_x_stop_mm = df_processed['x'].iloc[-1]
+    else:
+        df_processed = df_non_zero.copy()
+        description = "Unaltered copy of non-zero data."
+        # Primary particle column with the fewest zeros
+        primary_column = eda.find_primary_column_with_fewest_zeros(
+            df_processed, 'proton_1'
+        )
+        # Index of the minimum value after the peak in primary particle column
+        primary_x_stop_idx = eda.find_min_after_peak_index(
+            df_processed[primary_column]
+        )
+        primary_x_stop_mm = df_processed.iloc[primary_x_stop_idx]['x']
+        
+    # Log the decision for clarity
+    print(description)
     
     if verbose > 0:
         # Display filtered DataFrame
@@ -1406,7 +1689,7 @@ def main(
             subplot_x_range[-1]=subplot_x_stop
             
         _ = myplt.plot_let_profile(
-            df_early_stop, 
+            df_processed, 
             column_type=let_type,
             dose_profile=dose_profile,
             subplot_location=[0.2, 0.35, 0.25, 0.50],
@@ -1529,7 +1812,7 @@ def main(
             let_type=let_type,
             feature_on_single_plot=primary_feature_name,
             element_list=element_list, 
-            n_features_per_plot=n_elements_per_plot_input,
+            n_features_per_plot=n_features_per_plot_input,
             primary_x_stop_mm=primary_x_stop_mm,
             cut_in_um=cut_in_um, 
             voxel_in_um=voxel_in_um,
@@ -1594,7 +1877,7 @@ def main(
                              "'run_outliers_search' is True.")
         
         outliers_replacements_df = outliers_search(
-            let_df=df_early_stop,
+            let_df=df_processed,
             let_type=let_type,
             outliers_method_list=outliers_method_list,
             replace_method_list=replace_method_list,
@@ -1612,18 +1895,18 @@ def main(
         if not outliers_replacements_df.empty:
             # Create a new DataFrame with LET values identified as outliers replaced by
             # their corresponding 
-            df_early_stop = data_eng.replace_outliers_in_df(
-                df_early_stop, 
+            df_processed = data_eng.replace_outliers_in_df(
+                df_processed, 
                 outliers_replacements_df,
-                let_label
+                let_label,
             )
         
         if verbose > 0:
             replacement_column = f'{let_label}_is_replacement'
             # Check if a replacement has been made
-            if replacement_column not in df_early_stop.columns:
+            if replacement_column not in df_processed.columns:
                 print("\nNo value replaced.")
-            elif df_early_stop[replacement_column].any():
+            elif df_processed[replacement_column].any():
                 print("\nOutliers have been replaced.")
             else:
                 print("\nNo value replaced.")
@@ -1631,31 +1914,98 @@ def main(
     if run_vae_training:
         # Check if we need to optimize the VAE using Optuna
         if optimize_vae:
+            # Prepare directories
+            opt_plot_dir = '../opt_plot'
+            ensure_directory_exists(opt_plot_dir)
+            opt_history_dir = '../opt_history'
+            ensure_directory_exists(opt_history_dir)
+            
+            # Split and scale the dataset
+            X_train_scaled, X_val_scaled, X_test_scaled, scaler = \
+                split_and_scale_dataset(
+                    let_df=df_processed,
+                    verbose=verbose,
+                    **vae_params
+                )
+            
+            # Create an Optuna study and optimize the VAE hyperparameters
             study = optuna.create_study(direction="minimize")
             study.optimize(
-                lambda trial: opt_objective(trial, df_early_stop, optuna_params,
-                                            verbose=False),                   
+                lambda trial: opt_objective(
+                    trial,
+                    df_processed,
+                    X_train_scaled,
+                    X_val_scaled,
+                    X_test_scaled,
+                    scaler,
+                    optuna_params,
+                    vae_params,
+                    vae_plot_dir=opt_plot_dir,
+                    vae_history_dir=opt_history_dir,
+                    verbose=True),                   
                 n_trials=n_trials
             )
             
-            # Extract best parameters and log results
+            # Retrieve and log the best parameters and loss
             best_params = study.best_params
+            net_size = [best_params[f'layer_{i}_size'] \
+                for i in range(best_params['num_layers'])]
+            best_params['net_size'] = net_size
             best_loss = study.best_value
-            print("Best Hyperparameters:", best_params)
-            print("Best Loss:", best_loss)
+            print("\n--- Best Hyperparameters for this trial ---")
+            for param, value in best_params.items():
+                print(f"{param}: {value}")
+            print(f"Best Loss: {best_loss}")
+            print("------------------------------------------\n")
+            
+            # Save best parameters and loss for future reference (implement as needed)
+            # Example: save_to_json(best_params, 'best_params.json')
+            # Example: save_to_json({'loss': best_loss}, 'best_loss.json')
+            
+            # Update VAE parameters with the best hyperparameters
+            vae_params.update(best_params)
+            
+            # Create DataLoaders with the best batch size
+            data_loaders = create_data_loaders_from_dataframes(
+                X_train_scaled=X_train_scaled,
+                X_val_scaled=X_val_scaled,
+                X_test_scaled=X_test_scaled,
+                batch_size=best_params.get('batch_size', 100),
+            )
             
             # Re-train VAE with best parameters
             _ = train_vae(
-                let_df=df_early_stop,
+                let_df=df_processed,
+                train_loader=data_loaders['train_loader'],
+                val_loader=data_loaders['val_loader'],
+                test_loader=data_loaders['test_loader'],
+                scaler=scaler,
                 verbose=verbose,
                 vae_plot_dir=vae_plot_dir,
                 vae_history_dir=vae_history_dir,
-                **best_params
+                **vae_params
             )
         else:
+            # Prepare DataLoaders
+            data_loaders = prepare_data_loaders(
+                let_df=df_processed,
+                verbose=verbose,
+                **vae_params
+            )
+
+            # Retrieve the DataLoaders and scaler
+            train_loader = data_loaders['train_loader']
+            val_loader = data_loaders['val_loader']
+            test_loader = data_loaders['test_loader']
+            scaler = data_loaders['scaler']
+        
             # Train VAE with default parameters
             _ = train_vae(
-                let_df=df_early_stop,
+                let_df=df_processed,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
+                scaler=scaler,
                 verbose=verbose,
                 vae_plot_dir=vae_plot_dir,
                 vae_history_dir=vae_history_dir,
@@ -1742,6 +2092,7 @@ if __name__ == '__main__':
                 'latent_dim_scaling': (1, 4),
                 'net_size_upsample': (1, 3),
                 'net_size_scaling': (1, 4),
+                'num_layers': (2, 5),
                 'epochs': [10, 25, 50], 
             }
     
@@ -1752,9 +2103,10 @@ if __name__ == '__main__':
         run_data_exploration=False, 
         run_outliers_search=False,
         run_vae_training=True,
-        optimize_vae=False,
+        optimize_vae=True,
         n_trials=1,
         optuna_params = optuna_params,
+        cut_with_primary=True,
         data_dir='../data/t96_1e8_c1000_v1_d50',
         data_file='Let_1000-1.out',
         dose_file='Dose_1000-1.out',
@@ -1772,8 +2124,8 @@ if __name__ == '__main__':
         random_seed=0,
         verbose=2,
         export_plots=True,
-        eda_plot_dir='../eda_plots/',
-        vae_plot_dir='../vae_render/',
-        vae_history_dir='../model_history/',
+        eda_plot_dir='../eda_plots/let_dose',
+        vae_plot_dir='../vae_render',
+        vae_history_dir='../model_history',
     )
     

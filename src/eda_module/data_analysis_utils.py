@@ -247,6 +247,46 @@ def cut_dataframe_at_abrupt_variation(
     # Return the DataFrame up to the first abrupt variation
     return df.iloc[:first_abrupt_variation_index + 1]
 
+def find_primary_column_with_fewest_zeros(
+    df: _pd.DataFrame, 
+    primary_search_pattern: str
+) -> str:
+    """
+    Find the primary particle column with the fewest zero values.
+    
+    Parameters:
+    - df (DataFrame): The input DataFrame to analyze.
+    - primary_search_pattern (str): The pattern to identify primary particle
+      columns.
+      
+    Returns:
+    - str: The name of the primary particle column with the fewest zeros.
+    """
+    # Extract primary particle columns
+    primary_columns = [col for col in df.columns if primary_search_pattern in col]
+    
+    # Find the column with the fewest zero values
+    return max(primary_columns, key=lambda col: df[col].astype(bool).sum())
+
+def find_min_after_peak_index(series: _pd.Series) -> int:
+    """
+    Find the index of the first minimum value after the peak in a Series.
+    
+    Parameters:
+    - series (Series): The input Series to analyze.
+    
+    Returns:
+    - int: The index of the first minimum value after the peak.
+    """
+    # Find the index of the maximum value in the Series
+    max_index = series.idxmax()
+    
+    # Find the index of the minimum value after the maximum
+    min_after_max_index = series[max_index:].idxmin()
+    
+    return min_after_max_index
+
+
 def cut_dataframe_with_primary(
     df: _pd.DataFrame, 
     column_type: str = 'track', 
@@ -267,26 +307,20 @@ def cut_dataframe_with_primary(
     - DataFrame: DataFrame containing data up to the first minimum value after
       the peak. 
     """
-    
     df_by_column_type = extract_track_or_dose_cols(df, column_type)
     
     # Compose the primary particle name with the suffix '_1'
     primary_search_pattern = f'{primary_particle}_1'
     
-    # Extract primary columns
-    primary_columns = [col for col in df_by_column_type.columns if 
-                       primary_search_pattern in col]
+    # Find the primary particle column with the fewest zeros
+    primary_column = find_primary_column_with_fewest_zeros(
+        df_by_column_type, primary_search_pattern
+    )
     
-    # Select the column with the most non-zero values
-    max_non_zero_column = max(primary_columns, 
-                              key=lambda col: df[col].astype(bool).sum())
-    
-    # Find the index of the maximum value in the array
-    max_index = df_by_column_type[max_non_zero_column].idxmax()
-
-    # Find the index of the minimum after the maximum value
-    min_after_max_index = \
-        df_by_column_type[max_non_zero_column][max_index:].idxmin()
+    # Find the index of the minimum value after the peak
+    min_after_max_index = find_min_after_peak_index(
+        df_by_column_type[primary_column]
+    )
         
     # Return the DataFrame up to the primary minimum value after the peak
     return df.iloc[:min_after_max_index + 1]
