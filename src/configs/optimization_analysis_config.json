@@ -1,0 +1,7 @@
+{
+  "project_root": null,
+  "optuna_io_dir": "vae_opt_output",
+  "database": "optuna_study.db",
+  "study_name": "vae_optimization",
+  "output_dir": "vae_opt_plots"
+}

@@ -1,0 +1,25 @@
+{
+  "batch_size": 100,
+  "num_layers": 1,
+  "layer_0_size": 164,
+  "latent_dim": 24,
+  "use_dropout": true,
+  "dropout_rate": 0.11106681880248642,
+  "use_exit_activation": true,
+  "exit_activation_type": "pelu",
+  "a_init": 1.754386449701066,
+  "b_init": 4.168461589830326,
+  "optimizer": "Adam",
+  "learning_rate": 0.0025849356311208336,
+  "weight_decay": 2.825503606071303e-06,
+  "loss_type": "standard",
+  "use_neg_penalty": false,
+  "beta": 0.11447097924060302,
+  "hidden_layers_dim": [
+    164
+  ],
+  "input_dim": 37,
+  "neg_penalty_weight": 0.0,
+  "processed_dim": 36,
+  "skip_norm_in_final": true
+}

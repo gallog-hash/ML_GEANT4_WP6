@@ -1,0 +1,71 @@
+{
+  "project_root": null,
+  "data_dir": "data/thr96_1e8_v1um_cut1mm_ver_11-2-2",
+  "data_file": "Let.out",
+  "study_path": "sqlite:///optuna_study.db",
+  "study_name": "vae_optimization",
+  "primary_particle": "proton",
+  "let_type": "track",
+  "cut_with_primary": true,
+  "drop_zero_cols": true,
+  "drop_zero_thr": 100.0,
+  "train_size": 0.7,
+  "val_size": 0.2,
+  "test_size": 0.1,
+  "scaler": {
+    "type": "standard",
+    "with_mean": false,
+    "with_std": true
+  },
+  "identity_features": ["x"],
+  
+  "net_size": [164], 
+  "latent_dim": 24,
+  "use_dropout": true,
+  "dropout_rate": 0.11106681880248642,
+
+  "use_exit_activation": true,
+  "exit_activation": {
+    "type": "pelu",
+    "params": {
+        "a_init": 1.754386449701066,
+        "b_init": 4.168461589830326
+    }
+  },
+  "skip_norm_in_final": true,
+
+  "loss": {
+    "type": "standard",
+    "params": {
+        "beta": 0.11447097924060302,
+        "use_negative_penalty": false,
+        "neg_penalty_weight": 0.0
+    }
+  },
+
+  "optimizer": {
+    "optimizer": "adam",
+    "learning_rate": 0.0025849356311208336,
+    "weight_decay": 2.825503606071303e-06
+  },
+
+  "batch_size": 100,
+
+  "training_epochs": 5,
+  "training_log_step": 5,
+  "val_loss_threshold": 2.0,
+  
+  "output_dir": "vae_trainer_outputs",
+  "use_timestamp_output_dir": true,
+  "plot_data_splitting": true,
+  "features_to_plot": ["LTT"],
+  "metrics_to_plot": [
+      ["train_loss", "val_loss"],
+      "train_loss_mse",
+      "train_loss_kld"
+  ],
+
+  "model_summary_filename": "model_summary.txt",
+  "model_weights_filename": "trained_model_weights.pth",
+  "history_filename": "training_history.json"
+}

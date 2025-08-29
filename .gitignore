@@ -175,5 +175,37 @@ model_history/
 # Ignore eda_plots directory
 eda_plots/
 
-# Ignore data files directories
-/data/*
+# Ignore dataeng_plots directory
+dataeng_plots/
+
+# Ignore vae_history directory
+vae_history/
+
+# Ignore vae_plots directory
+vae_plots/
+
+# Ignore vae_opt_plot directory
+vae_opt_plot*/
+
+# Ignore vae_trainer_outputs directory
+vae_trainer_outputs/
+
+# Ignore vae_generate_plots directory
+vae_generate_plots/
+
+# Ignore optimization results directoriers
+opt_*/
+
+# Ignore oversized data files directories
+/data/t96_1e7_c1000_v1_d300_mev-122
+/data/check-ver-G4
+
+# Ignore files with replaced values
+/data/*/*_replaced.out
+
+# Ignore summaries
+src/*summary.txt
+
+# Ignore scripts
+scripts/*
+.claude/settings.local.json

@@ -1,0 +1,33 @@
+{
+  "project_root": null,
+  "data_dir": "data/thr96_1e8_v1um_cut1mm_ver_11-2-2",
+  "data_file": "Let.out",
+  "optuna_io_dir": "vae_opt_output",
+  "database": "optuna_study.db",
+  "study_name": "vae_optimization",
+  "primary_particle": "proton",
+  "let_type": "track",
+  "cut_with_primary": true,
+  "drop_zero_cols": true,
+  "drop_zero_thr": 100.0,
+  "train_size": 0.7,
+  "val_size": 0.2,
+  "test_size": 0.1,
+  "scaler": {
+    "type": "standard",
+    "with_mean": false,
+    "with_std": true
+  },
+  "identity_features": ["x"],
+  "hparams_config_filename": "best_hyperparameters_config.json",
+  "model_weights_filename": "best_model_weights.pth",
+  "history_filename": "best_model_training_history.json",
+  "output_dir": "vae_opt_plots",
+  "features_to_plot": ["LTT"],
+  "metrics_to_plot": [
+    ["train_loss", "val_loss"],
+    "train_loss_mse",
+    "train_loss_kld",
+    "train_neg_penalty"
+  ]
+}
