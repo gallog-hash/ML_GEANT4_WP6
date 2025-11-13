@@ -2,8 +2,6 @@
   "project_root": null,
   "data_dir": "data/thr96_1e8_v1um_cut1mm_ver_11-2-2",
   "data_file": "Let.out",
-  "study_path": "sqlite:///optuna_study.db",
-  "study_name": "vae_optimization",
   "primary_particle": "proton",
   "let_type": "track",
   "cut_with_primary": true,
@@ -18,7 +16,8 @@
     "with_std": true
   },
   "identity_features": ["x"],
-  
+  "clamp_negatives": true,
+
   "net_size": [164], 
   "latent_dim": 24,
   "use_dropout": true,
@@ -51,14 +50,14 @@
 
   "batch_size": 100,
 
-  "training_epochs": 5,
+  "training_epochs": 50,
   "training_log_step": 5,
   "val_loss_threshold": 2.0,
   
   "output_dir": "vae_trainer_outputs",
   "use_timestamp_output_dir": true,
   "plot_data_splitting": true,
-  "features_to_plot": ["LTT"],
+  "features_to_plot": ["LTT", "proton_1_T", "Li6_T", "Be7_T", "B10_T"],
   "metrics_to_plot": [
       ["train_loss", "val_loss"],
       "train_loss_mse",

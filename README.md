@@ -21,10 +21,14 @@ The **super-resolution task** involves:
 
 ## 🧪 Key Features
 
-- 🔧 Modular training/optimization via `vae_training.py` and `vae_optimization.py`
+- 🔧 Modular training/optimization via `vae_training.py` and
+  `vae_optimization.py`
 - 🎯 Study of various loss functions and network configurations
 - 📈 Performance visualization and EDA (via Matplotlib and Optuna)
 - 📦 Utilities for dataset I/O, logging, and evaluation included in `utils/`
+- 🔽 Data downsampling tool for creating low-resolution datasets from
+  high-resolution simulations
+- ⚙️ Profile-based configuration system for flexible generation workflows
 
 ---
 
@@ -34,6 +38,7 @@ The **super-resolution task** involves:
 src/
 ├── vae_training.py                    # Main VAE training script
 ├── vae_generate.py                    # Generate super-resolved outputs
+├── vae_downsample.py                  # Downsample high-resolution data
 ├── vae_optimization.py                # Hyperparameter optimization (Optuna)
 ├── vae_optimization_analysis.py       # Analysis of optimization runs
 ├── vae_post_analysis.py               # Post-training evaluation and visualization
@@ -56,10 +61,13 @@ src/
 │   ├── logger.py                      # VAELogger for consistent logging
 │   ├── model_io.py                    # Model saving/loading
 │   ├── latent_utils.py                # Latent space analysis
-│   └── plot_utils.py                  # Training metrics visualization
+│   ├── plot_utils.py                  # Training metrics visualization
+│   └── timing.py                      # Optional execution timing (OptionalTimer)
 └── configs/                           # Configuration files
     ├── trainer_config.json            # Main training configuration
     ├── generation_config.json         # Model generation settings
+    ├── generation_profiles.json       # Generation profiles (downsample/direct)
+    ├── downsample_config.json         # Data downsampling configuration
     ├── optuna_config.json             # Hyperparameter optimization
     ├── optimization_analysis_config.json # Optimization analysis settings
     └── post_training_config.json      # Post-training evaluation
@@ -69,55 +77,163 @@ src/
 
 ## 🧰 Usage
 
-### 1. Train a VAE
+### 1. Downsample High-Resolution Data
+
+Before training, you can downsample high-resolution LET data to create
+low-resolution datasets:
+
+```bash
+# Downsample with default settings from config
+python src/vae_downsample.py --config_path src/configs/downsample_config.json
+
+# Downsample with custom factor and output filename
+python src/vae_downsample.py \
+  --config_path src/configs/downsample_config.json \
+  --downsample_factor 20 \
+  --output_filename Let_downsampled_20x.out
+```
+
+Output is saved to `vae_downsample_output/<source_dir>_ds<factor>x/`
+
+### 2. Train a VAE
 
 ```bash
 python src/vae_training.py --config_path src/configs/trainer_config.json
 ```
 
-### 2. Generate Super-Resolved Output
+### 3. Generate Super-Resolved Output
 
 ```bash
 python src/vae_generate.py --config_path src/configs/generation_config.json
 ```
 
-### 3. Optimize Hyperparameters
+#### Generation Profiles
+
+The generation pipeline supports two input modes via
+`generation_profiles.json`:
+
+- **`downsample` mode**: Automatically downsamples high-resolution data during
+  generation
+- **`direct` mode**: Uses pre-downsampled low-resolution data from a specified
+  directory
+
+Specify the profile in your generation config or use command-line override.
+
+### 4. Optimize Hyperparameters
 
 ```bash
 python src/vae_optimization.py --config_path src/configs/optuna_config.json
 ```
 
-### 4. Analyze Optimization Results
+### 5. Analyze Optimization Results
 
 ```bash
-python src/vae_optimization_analysis.py --config_path src/configs/optimization_analysis_config.json
+python src/vae_optimization_analysis.py \
+  --config_path src/configs/optimization_analysis_config.json
 ```
 
-### 5. Post-Training Analysis
+### 6. Post-Training Analysis
 
 ```bash
-python src/vae_post_analysis.py --config_path src/configs/post_training_config.json
+python src/vae_post_analysis.py \
+  --config_path src/configs/post_training_config.json
 ```
 
-### 6. Exploratory Data Analysis
+### 7. Exploratory Data Analysis
 
 ```bash
 python src/eda_main.py
 ```
 
-### 7. Data Engineering and Preprocessing
+### 8. Data Engineering and Preprocessing
 
 ```bash
 python src/dataeng_main.py
 ```
 
+---
+
+## ⏱️ Performance Profiling
+
+To measure execution time of pipeline operations, enable timing in your
+configuration file and filter logs to show only timing measurements:
+
+```bash
+# View only timing output from generation pipeline
+python src/vae_generate.py \
+  --config_path src/configs/generation_config.json \
+  2>&1 | grep "completed in"
+```
+
+**Configuration requirement:**
+Set `"enable_timing": true` in your config file (e.g.,
+`generation_config.json`)
+
+**Example output:**
+```
+[INFO] [VAEGenerate] Data preprocessing completed in 0.15s
+[INFO] [VAEGenerate] Model initialization completed in 0.63s
+[INFO] [VAETrainer] Data loader preparation completed in 0.00s
+[INFO] [VAETrainer] High-resolution generation completed in 0.96s
+[INFO] [VAETrainer] Data post-processing completed in 0.01s
+[INFO] [VAETrainer] Export to Let.out format completed in 0.83s
+```
+
+**Supported scripts:**
+- `vae_generate.py` (currently implemented)
+- Other pipeline scripts can be extended with `OptionalTimer` as needed
+
 ### 📘 Script Guides
 
-- [vae_training.py](wiki/vae_training_guide.md) – Training pipeline workflow and configuration
-- [vae_generate.py](wiki/vae_generate_guide.md) – Super-resolution generation from trained models
-- [vae_optimization.py](wiki/vae_optimization_guide.md) – Hyperparameter optimization with Optuna
-- [vae_optimization_analysis.py](wiki/vae_optimization_analysis_guide.md) – Analysis and visualization of optimization results
-- [vae_post_analysis.py](wiki/vae_post_training_analysis_guide.md) – Post-training evaluation and metrics
+- [vae_downsample.py](wiki/vae_downsample_guide.md) – Data downsampling
+  tool for creating low-resolution datasets
+- [vae_training.py](wiki/vae_training_guide.md) – Training pipeline
+  workflow and configuration
+- [vae_generate.py](wiki/vae_generate_guide.md) – Super-resolution
+  generation from trained models
+- [vae_optimization.py](wiki/vae_optimization_guide.md) – Hyperparameter
+  optimization with Optuna
+- [vae_optimization_analysis.py](wiki/vae_optimization_analysis_guide.md) –
+  Analysis and visualization of optimization results
+- [vae_post_analysis.py](wiki/vae_post_training_analysis_guide.md) –
+  Post-training evaluation and metrics
+
+### 📚 Advanced Guides
+
+- [PROFILE_CONFIG_GUIDE.md](PROFILE_CONFIG_GUIDE.md) – Comprehensive
+  guide on the profile-based configuration system, input modes
+  (downsample vs direct), and generation workflows
+
+---
+
+## 🔄 Typical Workflow
+
+A typical super-resolution workflow consists of:
+
+1. **Data Preparation** (optional): Downsample high-resolution data to create
+   low-resolution training datasets
+   ```bash
+   python src/vae_downsample.py --config_path src/configs/downsample_config.json
+   ```
+
+2. **Model Training**: Train VAE on the dataset
+   ```bash
+   python src/vae_training.py --config_path src/configs/trainer_config.json
+   ```
+
+3. **Super-Resolution Generation**: Generate high-resolution outputs from
+   low-resolution inputs
+   ```bash
+   python src/vae_generate.py --config_path src/configs/generation_config.json
+   ```
+
+4. **Evaluation**: Analyze model performance and visualize results
+   ```bash
+   python src/vae_post_analysis.py \
+     --config_path src/configs/post_training_config.json
+   ```
+
+For hyperparameter tuning, use `vae_optimization.py` before final training.
 
 ---
 

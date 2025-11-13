@@ -187,11 +187,20 @@ vae_plots/
 # Ignore vae_opt_plot directory
 vae_opt_plot*/
 
+# Ignore vae_opt_output run directories
+vae_opt_output/run*/
+
 # Ignore vae_trainer_outputs directory
 vae_trainer_outputs/
 
+# Ignore vae_generate_output directory
+vae_generate_output/
+
 # Ignore vae_generate_plots directory
 vae_generate_plots/
+
+# Ignore vae_downsample_output directory
+vae_downsample_output/
 
 # Ignore optimization results directoriers
 opt_*/

@@ -141,9 +141,10 @@ class VAETrainer(BaseVAEPipeline, LatentSpaceMixin):
             input_dim=self.input_dim,
             n_processed_features=processed_dim,
             hyperparams={
-                **architecture_params, 
-                **exit_activation_params, 
-                **optimizer_params},
+                **architecture_params,
+                **exit_activation_params,
+                **optimizer_params,
+                "clamp_negatives": self.config.clamp_negatives},
             device=self.device
         )
         
@@ -221,7 +222,7 @@ class VAETrainer(BaseVAEPipeline, LatentSpaceMixin):
         
         self.logger.info("Evaluating model on test set...")
         self.test_rec, _ = self.model.reconstruct(self.test_loader)
-        self.plot_reconstruction(features_to_plot=['LTT'])
+        self.plot_reconstruction(features_to_plot=self.config.features_to_plot)
         latents = self.extract_latents(
             X_loader=self.train_loader, color_column='x'
         )

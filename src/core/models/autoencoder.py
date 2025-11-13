@@ -179,7 +179,8 @@ class AutoEncoder(nn.Module):
         self.exit_activation_type = architecture_params['exit_activation_type']
         self.use_exit_activation = architecture_params.get('use_exit_activation', True)
         self.skip_norm_in_final = architecture_params.get('skip_norm_in_final', False)
-        
+        self.clamp_negatives = architecture_params.get('clamp_negatives', False)
+
         self.device = device if device is not None else torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
         
@@ -270,13 +271,17 @@ class AutoEncoder(nn.Module):
         z = self.reparameterize(mu, logvar)
         # Decode the latent representation
         recon_proc = self.decoder(z)
-        
+
+        # Clamp negative values in processed features if enabled
+        if self.clamp_negatives:
+            recon_proc = torch.clamp(recon_proc, min=0.0)
+
         # If identity features exists, concatenate with the reconstructed part.
         if x_identity is not None:
             output = torch.cat([recon_proc, x_identity], dim=1)
         else:
             output = recon_proc
-        
+
         return output, mu, logvar
         
     def fit(
@@ -486,7 +491,11 @@ class AutoEncoder(nn.Module):
     
                 mu, _ = self.encode_latent(x_proc)
                 x_rec = self.decode_latent(mu)
-                
+
+                # Clamp negative values in processed features if enabled
+                if self.clamp_negatives:
+                    x_rec = torch.clamp(x_rec, min=0.0)
+
                 # If identity features exists, concatenate with the reconstructed part.
                 if x_identity is not None:
                     output = torch.cat([x_rec, x_identity], dim=1)
