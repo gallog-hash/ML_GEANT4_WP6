@@ -1,0 +1,14 @@
+{
+  "project_root": null,
+  "data_dir": "data/thr96_1e8_v1um_cut1mm_ver_11-2-2",
+  "data_file": "Let.out",
+  "primary_particle": "proton",
+  "let_type": "track",
+  "cut_with_primary": true,
+  "drop_zero_cols": true,
+  "drop_zero_thr": 100.0,
+  "random_seed": 42,
+  "identity_features": ["x"],
+  "downsample_factor": 1000,
+  "output_dir": "vae_downsample_output"
+}

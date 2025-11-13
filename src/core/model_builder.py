@@ -65,6 +65,7 @@ def build_vae_model_from_params(input_dim, n_processed_features, hyperparams, de
         "processed_dim": n_processed_features,
         "use_dropout": hyperparams.get("use_dropout", False),
         "dropout_rate": hyperparams.get("dropout_rate", 0.0),
+        "clamp_negatives": hyperparams.get("clamp_negatives", False),
     }
 
     # Define optimizer parameters only if corresponding keys exist in

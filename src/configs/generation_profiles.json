@@ -1,0 +1,16 @@
+{
+  "downsample": {
+    "input_mode": "downsample",
+    "lowres_data_dir": null,
+    "lowres_data_file": null,
+    "downsample_factor": 20,
+    "upsample_factor": 20
+  },
+  "direct": {
+    "input_mode": "direct",
+    "lowres_data_dir": "vae_downsample_output/thr96_1e8_v1um_cut1mm_ver_11-2-2_ds20x",
+    "lowres_data_file": "Let_downsampled_20x.out",
+    "downsample_factor": null,
+    "upsample_factor": 20
+  }
+}

@@ -19,10 +19,13 @@
     "with_std": true
   },
   "identity_features": ["x"],
+  "clamp_negatives": true,
   "hparams_config_filename": "best_hyperparameters_config.json",
   "model_weights_filename": "best_model_weights.pth",
   "history_filename": "best_model_training_history.json",
   "output_dir": "vae_generate_plots",
   "features_to_plot": ["LTT", "proton_1_T", "Li6_T", "Be7_T", "B10_T"],
-  "resample_factor": 20
+  "enable_plots": false,
+  "enable_timing": true,
+  "profile": "downsample"
 }
