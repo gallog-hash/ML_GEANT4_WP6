@@ -9,6 +9,6 @@
   "drop_zero_thr": 100.0,
   "random_seed": 42,
   "identity_features": ["x"],
-  "downsample_factor": 1000,
+  "downsample_factor": 20,
   "output_dir": "vae_downsample_output"
 }
