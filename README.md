@@ -90,10 +90,10 @@ python src/vae_downsample.py --config_path src/configs/downsample_config.json
 python src/vae_downsample.py \
   --config_path src/configs/downsample_config.json \
   --downsample_factor 20 \
-  --output_filename Let_downsampled_20x.out
+  --output_filename Let_downsampled.out
 ```
 
-Output is saved to `vae_downsample_output/<source_dir>_ds<factor>x/`
+Output is saved to `vae_downsample_output/<source_dir>/` with the downsampling factor included in the filename (e.g., `Let_downsampled_20x.out`)
 
 ### 2. Train a VAE
 

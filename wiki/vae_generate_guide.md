@@ -101,7 +101,7 @@ available for comparison.
 {
   "direct": {
     "input_mode": "direct",
-    "lowres_data_dir": "vae_downsample_output/thr96_1e8_v1um_cut1mm_ver_11-2-2_ds20x",
+    "lowres_data_dir": "vae_downsample_output/thr96_1e8_v1um_cut1mm_ver_11-2-2",
     "lowres_data_file": "Let_downsampled_20x.out",
     "upsample_factor": 20
   }

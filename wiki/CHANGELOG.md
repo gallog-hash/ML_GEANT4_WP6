@@ -17,6 +17,16 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Downsampling output directory structure:**
+  Modified `vae_downsample.py` to use a consistent output directory
+  structure where the downsampling factor is included in the filename
+  instead of the directory name. Output files are now saved to
+  `vae_downsample_output/<source_dir>/` with filenames like
+  `Let_downsampled_20x.out` instead of using separate directories for
+  each downsampling factor. This simplifies directory management and
+  makes it easier to compare different downsampling factors for the
+  same source data.
+
 - **Enhanced timing precision in OptionalTimer:**
   Improved time formatting in `src/utils/timing.py` to automatically
   select appropriate units based on duration: seconds (≥1s) with

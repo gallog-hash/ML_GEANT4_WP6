@@ -100,20 +100,27 @@ class VAEDownsampler:
             column_order = ["i", "j", "k"] + other_columns
             export_df = export_df[column_order]
 
-        # Create descriptive output directory name that includes
-        # source data info and downsampling factor
+        # Create output directory name (without downsampling factor)
         # Extract just the directory name from the full path
         source_dir_name = Path(source_data_dir).name
 
-        # Build output directory name:
-        # vae_downsample_output/<source_dir>_ds<factor>x
-        output_dir_name = (
-            f"vae_downsample_output/{source_dir_name}_ds{downsample_factor}x"
-        )
+        # Build output directory name: vae_downsample_output/<source_dir>
+        output_dir_name = f"vae_downsample_output/{source_dir_name}"
 
         project_root = getattr(self.config, "project_root", None)
         output_dir = resolve_path_with_project_root(output_dir_name, project_root)
-        output_path = output_dir / output_filename
+
+        # Include downsampling factor in the filename
+        # If the output_filename has an extension, insert factor before it
+        filename_parts = output_filename.rsplit(".", 1)
+        if len(filename_parts) == 2:
+            output_filename_with_factor = (
+                f"{filename_parts[0]}_{downsample_factor}x.{filename_parts[1]}"
+            )
+        else:
+            output_filename_with_factor = f"{output_filename}_{downsample_factor}x"
+
+        output_path = output_dir / output_filename_with_factor
 
         # Ensure the output directory exists
         ensure_directory_exists(output_dir)
@@ -189,6 +196,10 @@ def main(
             "downsample_factor must be specified either in config "
             "or via --downsample_factor argument"
         )
+
+    # Use output_filename from config if not provided via command line
+    if output_filename is None:
+        output_filename = getattr(config, "output_filename", "Let_downsampled.out")
 
     # Initialize logger
     logger_obj = VAELogger(name="VAEDownsampler", log_level="debug")

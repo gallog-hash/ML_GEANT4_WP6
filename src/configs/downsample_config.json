@@ -10,5 +10,6 @@
   "random_seed": 42,
   "identity_features": ["x"],
   "downsample_factor": 20,
+  "output_filename": "Let_downsampled.out",
   "output_dir": "vae_downsample_output"
 }
