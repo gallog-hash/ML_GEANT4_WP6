@@ -10,6 +10,14 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Command-line argument for lowres_data_file:**
+  Added `--lowres_data_file` command-line argument to `vae_generate.py`
+  to allow overriding the low-resolution data filename specified in the
+  configuration file. This enables quick testing with different input
+  files without modifying the config. The argument accepts a filename
+  (not a full path) which is combined with `lowres_data_dir` from the
+  config to construct the full file path.
+
 - **README.md directory structure update:**
   Added `timing.py` entry to the utils/ section of the directory
   structure, documenting the optional execution timing utility

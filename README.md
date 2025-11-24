@@ -119,6 +119,12 @@ The generation pipeline supports two input modes via
 
 Specify the profile in your generation config or use command-line override.
 
+#### Command-Line Options
+
+- `--config_path`: Path to generation config JSON file
+- `--profile`: Profile name to use (overrides profile in config file)
+- `--lowres_data_file`: Filename of low-resolution data file (overrides value in config file)
+
 ### 4. Optimize Hyperparameters
 
 ```bash

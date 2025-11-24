@@ -152,6 +152,12 @@ python src/vae_generate.py --profile direct
 python src/vae_generate.py --config_path src/configs/generation_config.json
 ```
 
+**Method 4: Override low-resolution data file:**
+```bash
+# Use a different low-res data file without editing config
+python src/vae_generate.py --profile direct --lowres_data_file Let_downsampled_10x.out
+```
+
 > 💡 If using Jupyter or VSCode Interactive Window, run:
 >
 > ```python
@@ -162,6 +168,8 @@ python src/vae_generate.py --config_path src/configs/generation_config.json
 - `--config_path`: Path to config JSON file (default: uses built-in
   config)
 - `--profile`: Override profile selection (e.g., "downsample", "direct")
+- `--lowres_data_file`: Filename of low-resolution data file (overrides
+  value in config file)
 
 ---
 
