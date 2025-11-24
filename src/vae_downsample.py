@@ -248,8 +248,12 @@ def main(
     # Reorder identity features
     df = reorder_identity_features(df, config.identity_features)
 
+    # Calculate downsampled voxel size
+    downsampled_voxel_um = voxel_in_um * config.downsample_factor
+
     logger.info(f"Loaded data shape: {df.shape}")
-    logger.info(f"Voxel size: {voxel_in_um} um")
+    logger.info(f"Original voxel size: {voxel_in_um} um")
+    logger.info(f"Downsampled voxel size: {downsampled_voxel_um} um")
     logger.info(f"Cut value: {cut_in_um} um")
 
     # Initialize downsampler
