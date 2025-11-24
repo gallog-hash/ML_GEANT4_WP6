@@ -93,7 +93,9 @@ python src/vae_downsample.py \
   --output_filename Let_downsampled.out
 ```
 
-Output is saved to `vae_downsample_output/<source_dir>/` with the downsampling factor included in the filename (e.g., `Let_downsampled_20x.out`)
+Output is saved to `vae_downsample_output/<source_dir>/` with the
+downsampling factor included in the filename (e.g.,
+`Let_downsampled_20x.out`)
 
 ### 2. Train a VAE
 
@@ -123,7 +125,26 @@ Specify the profile in your generation config or use command-line override.
 
 - `--config_path`: Path to generation config JSON file
 - `--profile`: Profile name to use (overrides profile in config file)
-- `--lowres_data_file`: Filename of low-resolution data file (overrides value in config file)
+- `--lowres_data_file`: Filename of low-resolution data file (overrides
+  value in config file)
+- `--upsample_factor`: Upsampling factor (overrides config value)
+
+#### Examples
+
+```bash
+# Use default settings from config
+python src/vae_generate.py --config_path src/configs/generation_config.json
+
+# Override profile to direct mode
+python src/vae_generate.py --profile direct
+
+# Override upsampling factor
+python src/vae_generate.py --upsample_factor 50
+
+# Combine multiple overrides
+python src/vae_generate.py --profile direct --upsample_factor 50 \
+  --lowres_data_file Let_downsampled_10x.out
+```
 
 ### 4. Optimize Hyperparameters
 

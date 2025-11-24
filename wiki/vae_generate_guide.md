@@ -155,7 +155,19 @@ python src/vae_generate.py --config_path src/configs/generation_config.json
 **Method 4: Override low-resolution data file:**
 ```bash
 # Use a different low-res data file without editing config
-python src/vae_generate.py --profile direct --lowres_data_file Let_downsampled_10x.out
+python src/vae_generate.py --profile direct \
+  --lowres_data_file Let_downsampled_10x.out
+```
+
+**Method 5: Override upsampling factor:**
+```bash
+# Use a custom upsampling factor
+python src/vae_generate.py --upsample_factor 50
+
+# Combine with other overrides
+python src/vae_generate.py --profile direct \
+  --upsample_factor 50 \
+  --lowres_data_file Let_downsampled_10x.out
 ```
 
 > 💡 If using Jupyter or VSCode Interactive Window, run:
@@ -170,6 +182,7 @@ python src/vae_generate.py --profile direct --lowres_data_file Let_downsampled_1
 - `--profile`: Override profile selection (e.g., "downsample", "direct")
 - `--lowres_data_file`: Filename of low-resolution data file (overrides
   value in config file)
+- `--upsample_factor`: Upsampling factor (overrides config value)
 
 ---
 

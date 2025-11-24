@@ -10,6 +10,15 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Command-line argument for upsample_factor:**
+  Added `--upsample_factor` command-line argument to `vae_generate.py`
+  to allow overriding the upsampling factor specified in the
+  configuration file or profile. This enables quick experimentation
+  with different interpolation densities without modifying config files.
+  The argument accepts an integer value (e.g., `--upsample_factor 50`)
+  and can be combined with other CLI overrides like `--profile` and
+  `--lowres_data_file` for flexible generation workflows.
+
 - **Command-line argument for lowres_data_file:**
   Added `--lowres_data_file` command-line argument to `vae_generate.py`
   to allow overriding the low-resolution data filename specified in the
@@ -22,6 +31,22 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Added `timing.py` entry to the utils/ section of the directory
   structure, documenting the optional execution timing utility
   (OptionalTimer) in the project overview.
+
+- **Documentation updates for upsample_factor CLI parameter:**
+  Updated all relevant documentation files to reflect the new
+  `--upsample_factor` command-line argument:
+  - **README.md:** Added `--upsample_factor` to CLI options and created
+    comprehensive examples section showing usage patterns including
+    default settings, profile override, upsampling factor override, and
+    combined overrides.
+  - **wiki/vae_generate_guide.md:** Added Method 5 demonstrating
+    upsampling factor override with examples of standalone and combined
+    usage with other CLI arguments.
+  - **PROFILE_CONFIG_GUIDE.md:** Added upsampling factor override
+    examples in CLI usage section and created new "CLI Override
+    Parameters" subsection documenting all available CLI arguments.
+  - **CLAUDE.md:** Added example command showing custom upsampling
+    factor usage for quick reference.
 
 ### Changed
 

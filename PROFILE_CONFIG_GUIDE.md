@@ -188,8 +188,18 @@ python src/vae_generate.py --profile downsample
 # Use direct mode (production inference)
 python src/vae_generate.py --profile direct
 
-# Override low-resolution data file (useful for testing different downsampling factors)
-python src/vae_generate.py --profile direct --lowres_data_file Let_downsampled_10x.out
+# Override low-resolution data file (useful for testing different
+# downsampling factors)
+python src/vae_generate.py --profile direct \
+  --lowres_data_file Let_downsampled_10x.out
+
+# Override upsampling factor
+python src/vae_generate.py --upsample_factor 50
+
+# Combine multiple overrides
+python src/vae_generate.py --profile direct \
+  --upsample_factor 50 \
+  --lowres_data_file Let_downsampled_10x.out
 ```
 
 ### Method 3: Programmatic (in notebooks/scripts)
@@ -278,6 +288,18 @@ downsample mode) |
 (null in direct mode) |
 | `upsample_factor` | int | Interpolate by this during generation
 (both modes) |
+
+### CLI Override Parameters
+
+All profile-specific parameters can be overridden via command-line
+arguments:
+
+| CLI Argument | Overrides | Example |
+|--------------|-----------|---------|
+| `--profile` | `profile` field | `--profile direct` |
+| `--lowres_data_file` | `lowres_data_file` | `--lowres_data_file
+Let_downsampled_10x.out` |
+| `--upsample_factor` | `upsample_factor` | `--upsample_factor 50` |
 
 ---
 

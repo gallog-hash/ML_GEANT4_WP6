@@ -550,6 +550,7 @@ def main(
     config_path: Optional[Union[str, Path]] = None,
     profile: Optional[str] = None,
     lowres_data_file: Optional[Union[str, Path]] = None,
+    upsample_factor: Optional[int] = None,
 ):
     # Load from CLI or fallback default
     if config_path is None:
@@ -577,10 +578,17 @@ def main(
             default=None,
             help="Filename of low-resolution data file (overrides value in config file)",
         )
+        parser.add_argument(
+            "--upsample_factor",
+            type=int,
+            default=None,
+            help="Upsampling factor (overrides config value)",
+        )
         args = parser.parse_args()
         config_path = args.config_path
         profile = args.profile
         lowres_data_file = args.lowres_data_file
+        upsample_factor = args.upsample_factor
 
     # Initialize configuration
     if config_path is None:
@@ -595,6 +603,10 @@ def main(
         # Override lowres_data_file if provided via command line
         if lowres_data_file is not None:
             config.lowres_data_file = lowres_data_file
+
+        # Override upsample_factor if provided via command line
+        if upsample_factor is not None:
+            config.upsample_factor = upsample_factor
     except (FileNotFoundError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to load config: {e}")
 
