@@ -10,6 +10,165 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Multi-factor batch generation script:**
+  Created `src/vae_generate_multi_factor.py` for systematic comparison
+  across different upsampling factors. The script automates running
+  `vae_generate.py` sequentially with multiple upsampling factors
+  (default: 10, 20, 50, 100), automatically updating the generation
+  profile configuration between runs and restoring original settings
+  after completion. Outputs factor-specific files to
+  `vae_generate_output/` directory with naming convention
+  `Let_upsampled_factor_<N>.out` for LET data and
+  `vae_generate_factor_<N>.txt` for execution logs. Includes proper
+  path resolution for execution from any directory and handles working
+  directory management for consistent behavior.
+
+### Changed
+
+- **Automatic factor-based filename generation:**
+  Modified `export_to_let_file()` method in `src/vae_generate.py` to
+  automatically generate output filenames based on the upsampling factor
+  when no filename is explicitly provided. Default behavior now creates
+  filenames like `Let_upsampled_factor_50.out` instead of the generic
+  `Let_upsampled.out`. This prevents output file overwrites when running
+  multiple generation passes with different upsampling factors and
+  improves traceability of results. The method signature changed from
+  `output_filename: str = "Let_upsampled.out"` to
+  `output_filename: Optional[str] = None` with automatic filename
+  generation when `None`.
+
+- **README.md documentation for multi-factor generation:**
+  Added comprehensive documentation for `vae_generate_multi_factor.py`
+  in README.md including entry in directory structure, new subsection
+  under "Generate Super-Resolved Output" with usage example,
+  explanation of automatic operations (sequential execution, config
+  updates, factor-specific outputs), and note about customizing the
+  `FACTORS` list for different test scenarios.
+
+### Added
+
+- **BraggPeakMetrics class for hadrontherapy-specific evaluation:**
+  Added comprehensive `BraggPeakMetrics` class in
+  `src/core/bragg_peak_metrics.py` providing domain-specific physical
+  accuracy metrics for Bragg peak reconstruction in particle therapy
+  simulations. Implements four key metrics: Peak Position Error
+  (absolute difference in depth of maximum dose), Peak Height Error
+  (absolute difference in maximum dose value), Peak FWHM Error
+  (difference in Full Width at Half Maximum), and Distal Falloff Error
+  (MAE of normalized dose decrease beyond peak). Uses scipy.signal for
+  peak detection with configurable prominence threshold, linear
+  interpolation for precise FWHM calculation, and normalized curve
+  comparison for distal falloff analysis. Includes robust handling of
+  edge cases (no peaks, multiple peaks, insufficient data) and detailed
+  error messaging.
+
+- **Bragg peak metrics integration in VAEGeneratorAnalysis:**
+  Extended `VAEGeneratorAnalysis` class in `src/vae_generate.py` with
+  `compute_bragg_peak_metrics()` method that evaluates domain-specific
+  physical accuracy of generated Bragg peaks. Integrated as the third
+  category in `evaluate_generated()` output (after reconstruction and
+  interpolation, before distribution metrics). Automatically filters
+  features to only analyze those with LET distributions exhibiting
+  Bragg peak patterns (LTT, LDT, proton_*). While all features relate
+  to secondary particles and dose distribution, only these specific
+  features show characteristic Bragg peak behavior. Updated metrics
+  display to show "[3] Bragg Peak Metrics (Domain-specific hadrontherapy
+  physics)" with peak position, height, FWHM, and distal falloff errors
+  per particle type. Provides critical physics validation for
+  hadrontherapy dose reconstruction beyond generic statistical metrics.
+
+- **Comprehensive test suite for BraggPeakMetrics:**
+  Created extensive test coverage verifying synthetic Bragg peak
+  generation, peak position/height detection accuracy, FWHM
+  calculation with linear interpolation, distal falloff comparison,
+  perfect match handling (zero errors), noisy data robustness, multiple
+  peak handling (selects most prominent), and proper integration into
+  VAEGeneratorAnalysis.evaluate_generated().
+
+- **PointwiseMetrics class for spatial fidelity evaluation:**
+  Added comprehensive `PointwiseMetrics` class in `src/core/metrics.py`
+  providing point-wise spatial fidelity metrics for evaluating VAE
+  generation quality. Implements four key metrics: MAE (Mean Absolute
+  Error) for average absolute differences, RMSE (Root Mean Square
+  Error) as standard reconstruction metric, MAPE (Mean Absolute
+  Percentage Error) for scale-invariant relative error, and R²
+  (Coefficient of Determination) measuring explained variance (1.0 =
+  perfect). Supports numpy arrays, pandas DataFrames, and PyTorch
+  tensors with automatic type conversion and comprehensive error
+  handling for edge cases (zeros, negatives, constant values).
+
+- **Enhanced VAEGeneratorAnalysis with comprehensive metrics:**
+  Extended `VAEGeneratorAnalysis` class in `src/vae_generate.py` with
+  three new metric computation methods: `compute_reconstruction_metrics()`
+  evaluates encoding/decoding fidelity using point-wise metrics,
+  `compute_interpolation_metrics()` evaluates gap-filling quality with
+  automatic size mismatch handling, and `get_resolution_info()`
+  provides context about sampling factors and voxel sizes. The
+  reorganized `evaluate_generated()` method now returns a structured
+  dictionary with resolution_info, reconstruction metrics, interpolation
+  metrics, and distribution metrics, replacing the previous single
+  DataFrame output.
+
+- **Resolution and sampling information display:**
+  Added comprehensive resolution context to metrics output showing
+  input mode (downsample/direct), upsample and downsample factors (e.g.,
+  20x), voxel sizes at each stage (original, low-res, target in μm),
+  and sample counts (input, reconstructed, generated, ground truth).
+  This provides essential context for interpreting quality metrics and
+  understanding the super-resolution transformation being evaluated.
+
+- **Independent analysis and plotting control:**
+  Added `enable_analysis` boolean flag to `GenerationConfig` allowing
+  independent control of metrics computation and plot generation.
+  Combined with existing `enable_plots` flag, this provides four
+  workflow modes: analysis only (~3.7s, metrics without plots), plots
+  only (~6-7s, visualizations without metrics), both enabled (~9.0s,
+  full output), or both disabled (upsampled data only). Updated
+  generation pipeline to conditionally initialize `VAEGeneratorAnalysis`
+  and execute plotting/analysis blocks based on respective flags.
+
+- **Comprehensive test suite for PointwiseMetrics:**
+  Created extensive test coverage verifying metric calculations, perfect
+  prediction handling, per-feature computation, DataFrame/Tensor input
+  support, edge case handling (zeros, negatives, constant values, shape
+  mismatches), and the comprehensive `evaluate_generated()` output
+  structure.
+
+### Changed
+
+- **Separated reconstruction and interpolation evaluation:**
+  Reorganized generation metrics to distinguish between reconstruction
+  quality (how well VAE reconstructs low-res input) and interpolation
+  quality (how well VAE generates intermediate gap-filling points).
+  This separation reveals that the VAE achieves excellent reconstruction
+  (R² > 0.97 for most features) while interpolation quality varies by
+  particle type (R² > 0.95 for protons, 0.17-0.78 for heavy particles
+  due to sparse statistics).
+
+- **Enhanced metrics output formatting:**
+  Improved metrics display with structured sections showing Resolution
+  & Sampling Information, Reconstruction Metrics (Low-res input → VAE →
+  Reconstructed output), Interpolation Metrics (Generated gaps vs.
+  ground truth), and Distribution Metrics (Statistical similarity
+  tests). Each section includes descriptive headers and clear
+  separators for better readability.
+
+- **Updated .gitignore for analysis outputs:**
+  Added patterns to exclude VAE generation analysis output files
+  (`vae_generate_metrics_output.txt`, `vae_analysis_only_output.txt`)
+  from version control as they are user-specific analysis results.
+
+### Fixed
+
+- **Size mismatch handling in interpolation metrics:**
+  Added automatic handling of edge cases where generated interpolation
+  samples don't exactly match ground truth sample count due to rounding
+  in the interpolation process. The `compute_interpolation_metrics()`
+  method now detects mismatches, logs a warning with actual counts, and
+  truncates both datasets to the minimum length to ensure valid metric
+  computation. This allows metrics to be calculated even with small
+  discrepancies (e.g., 30248 vs 30254 samples).
+
 - **Command-line argument for upsample_factor:**
   Added `--upsample_factor` command-line argument to `vae_generate.py`
   to allow overriding the upsampling factor specified in the

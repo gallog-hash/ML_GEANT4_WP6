@@ -123,7 +123,8 @@ class GenerationConfig(PostTrainingConfig):
     # Resolution factors (set by profile)
     downsample_factor: Optional[int] = None  # Downsample input by this
     upsample_factor: int = 20  # Interpolate by this during generation
-    # Plot generation control
+    # Output control flags
     enable_plots: bool = False  # Disable plots by default
+    enable_analysis: bool = False  # Disable metrics analysis by default
     # Timing control
     enable_timing: bool = False  # Disable timing by default

@@ -26,6 +26,7 @@
   "output_dir": "vae_generate_plots",
   "features_to_plot": ["LTT", "proton_1_T", "Li6_T", "Be7_T", "B10_T"],
   "enable_plots": false,
+  "enable_analysis": true,
   "enable_timing": true,
   "profile": "downsample"
 }

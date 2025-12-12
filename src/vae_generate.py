@@ -1,7 +1,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +13,8 @@ from torch.utils.data import DataLoader
 
 from configs.task_config import GenerationConfig
 from core.base_pipeline import BaseVAEPipeline
+from core.bragg_peak_metrics import BraggPeakMetrics
+from core.metrics import PointwiseMetrics
 from core.preprocessing.data_preprocessor import VAEDataPreprocessor
 from utils import (
     OptionalTimer,
@@ -264,17 +266,24 @@ class VAEGenerate(BaseVAEPipeline):
         )
 
     def export_to_let_file(
-        self, data_df: pd.DataFrame, output_filename: str = "Let_upsampled.out"
+        self, data_df: pd.DataFrame, output_filename: Optional[str] = None
     ):
         """
         Export the upsampled LET data to a textual file in the same
         format as the input Let.out file.
 
         Args:
-            data_df (pd.DataFrame): DataFrame containing the upsampled data to export
-            output_filename (str): Name of the output file
-                (default: "Let_upsampled.out")
+            data_df (pd.DataFrame): DataFrame containing the upsampled
+                data to export
+            output_filename (str, optional): Name of the output file. If
+                None, generates filename automatically based on
+                upsample_factor (e.g., "Let_upsampled_factor_50.out").
+                Default: None
         """
+        # Generate filename automatically if not provided
+        if output_filename is None:
+            output_filename = f"Let_upsampled_factor_{self.config.upsample_factor}.out"
+            self.logger.info(f"No output filename provided. Using: {output_filename}")
         # Create a copy to avoid modifying the original DataFrame
         export_df = data_df.copy()
 
@@ -331,6 +340,7 @@ class VAEGeneratorAnalysis:
         X_rec: pd.DataFrame,
         X_input: pd.DataFrame,
         X_input_gaps: Union[None, pd.DataFrame],
+        voxel_size_um: Optional[float] = None,
     ):
         self.config = config
         self.logger = logger
@@ -338,6 +348,47 @@ class VAEGeneratorAnalysis:
         self.X_rec = X_rec
         self.X_input = X_input
         self.X_input_gaps = X_input_gaps
+        self.voxel_size_um = voxel_size_um
+
+    def get_resolution_info(self) -> Dict[str, Any]:
+        """
+        Get resolution and sampling information for context.
+
+        Returns:
+            dict: Dictionary with resolution metadata including:
+                - upsample_factor: Interpolation factor used
+                - downsample_factor: Downsampling factor (if applicable)
+                - input_mode: "downsample" or "direct"
+                - voxel_size_um: Original voxel size in micrometers
+                - n_input: Number of low-res input samples
+                - n_generated: Number of generated interpolated samples
+                - n_ground_truth: Number of ground truth samples (if
+                  available)
+        """
+        info = {
+            "upsample_factor": self.config.upsample_factor,
+            "downsample_factor": self.config.downsample_factor,
+            "input_mode": self.config.input_mode,
+            "voxel_size_um": self.voxel_size_um,
+            "n_input": len(self.X_input),
+            "n_reconstructed": len(self.X_rec),
+            "n_generated": len(self.X_gen),
+        }
+
+        if self.X_input_gaps is not None:
+            info["n_ground_truth"] = len(self.X_input_gaps)
+
+        # Calculate effective resolutions
+        if self.voxel_size_um is not None:
+            if self.config.downsample_factor is not None:
+                info["lowres_voxel_size_um"] = (
+                    self.voxel_size_um * self.config.downsample_factor
+                )
+            info["target_voxel_size_um"] = (
+                self.voxel_size_um if self.config.input_mode == "downsample" else None
+            )
+
+        return info
 
     def plot_input_and_generated(
         self,
@@ -511,39 +562,311 @@ class VAEGeneratorAnalysis:
             }
         return mean_var_diff
 
-    def evaluate_generated(self):
-        # Compute metrics (returns None if no ground truth available)
-        wd = self.compute_wasserstein()
-        ks_p = self.compute_ks_test()
-        mean_var_diff = self.compute_mean_variance_difference()
+    def compute_reconstruction_metrics(self):
+        """
+        Compute pointwise spatial fidelity metrics for reconstruction
+        quality.
 
-        # If no ground truth data is available, skip evaluation
-        if self.X_input_gaps is None:
+        Compares the reconstructed data (X_rec) against the original
+        input (X_input) to evaluate how well the VAE can reconstruct
+        the low-resolution data.
+
+        Returns:
+            pd.DataFrame or None: DataFrame with reconstruction metrics
+                per feature, or None if reconstruction data is not
+                available.
+        """
+        if self.X_rec is None or self.X_input is None:
             self.logger.warning(
-                "No ground truth data available for evaluation. Returning None."
+                "Reconstruction data not available. Skipping reconstruction metrics."
             )
             return None
 
-        metric_rows = [
-            {
-                "Feature": feature,
-                "Wasserstein Distance": wd.get(feature) if wd else None,
-                "KS-Test p-value": ks_p.get(feature) if ks_p else None,
-                "Mean Difference": mean_var_diff.get(feature, {}).get(
-                    "Mean Difference", None
-                )
-                if mean_var_diff
-                else None,
-                "Variance Difference": mean_var_diff.get(feature, {}).get(
-                    "Variance Difference", None
-                )
-                if mean_var_diff
-                else None,
-            }
-            for feature in self.X_input_gaps.columns
+        # Remove spatial coordinate 'x' if present
+        features_to_compare = [col for col in self.X_input.columns if col != "x"]
+
+        if not features_to_compare:
+            self.logger.warning("No features to compare for reconstruction.")
+            return None
+
+        # Extract only the features (exclude 'x' coordinate)
+        y_true = self.X_input[features_to_compare]
+        y_pred = self.X_rec[features_to_compare]
+
+        # Initialize the PointwiseMetrics calculator
+        metrics_calc = PointwiseMetrics(epsilon=1e-8)
+
+        # Compute all metrics per feature
+        reconstruction_metrics = metrics_calc.compute_all(
+            y_true=y_true,
+            y_pred=y_pred,
+            per_feature=True,
+            feature_names=features_to_compare,
+        )
+
+        return reconstruction_metrics
+
+    def compute_interpolation_metrics(self):
+        """
+        Compute pointwise spatial fidelity metrics for interpolated
+        (gap-filling) data quality.
+
+        Compares the generated interpolated data (X_gen) against the
+        ground truth gaps (X_input_gaps) to evaluate how well the VAE
+        can generate intermediate points.
+
+        Returns:
+            pd.DataFrame or None: DataFrame with interpolation metrics
+                per feature, or None if ground truth data is not
+                available.
+        """
+        if self.X_input_gaps is None:
+            self.logger.warning(
+                "No ground truth data available for interpolation. "
+                "Skipping interpolation metrics."
+            )
+            return None
+
+        # Remove spatial coordinate 'x' if present
+        features_to_compare = [col for col in self.X_input_gaps.columns if col != "x"]
+
+        if not features_to_compare:
+            self.logger.warning("No features to compare for interpolation.")
+            return None
+
+        # Extract only the features (exclude 'x' coordinate)
+        y_true = self.X_input_gaps[features_to_compare]
+        y_pred = self.X_gen[features_to_compare]
+
+        # Handle potential size mismatch due to interpolation rounding
+        if len(y_true) != len(y_pred):
+            min_len = min(len(y_true), len(y_pred))
+            self.logger.warning(
+                f"Size mismatch in interpolation data: "
+                f"ground_truth={len(y_true)}, "
+                f"generated={len(y_pred)}. "
+                f"Truncating both to {min_len} samples for comparison."
+            )
+            y_true = y_true.iloc[:min_len]
+            y_pred = y_pred.iloc[:min_len]
+
+        # Initialize the PointwiseMetrics calculator
+        metrics_calc = PointwiseMetrics(epsilon=1e-8)
+
+        # Compute all metrics per feature
+        interpolation_metrics = metrics_calc.compute_all(
+            y_true=y_true,
+            y_pred=y_pred,
+            per_feature=True,
+            feature_names=features_to_compare,
+        )
+
+        return interpolation_metrics
+
+    def compute_bragg_peak_metrics(self):
+        """
+        Compute Bragg peak-specific metrics for hadrontherapy
+        evaluation.
+
+        Evaluates domain-specific physical accuracy of Bragg peak
+        reconstruction:
+        - Peak Position Error: Accuracy of dose maximum depth (mm)
+        - Peak Height Error: Accuracy of maximum dose value (a.u.)
+        - FWHM Error: Accuracy of peak width (mm)
+        - Distal Falloff Error: Accuracy of dose decrease beyond peak
+          (dimensionless)
+
+        Note:
+            Only analyzes features with LET distributions that exhibit
+            Bragg peaks (features starting with 'LTT', 'LDT', or
+            'proton_'). While all features relate to secondary particles
+            and dose distribution, only these show characteristic Bragg
+            peak patterns. Other features are excluded from this
+            analysis.
+
+            Units: Spatial metrics (position, FWHM) in mm; height in
+            feature units (a.u.); falloff is dimensionless (0-1).
+
+        Returns:
+            pd.DataFrame or None: DataFrame with Bragg peak metrics
+                per feature, or None if ground truth data is not
+                available.
+        """
+        if self.X_input_gaps is None:
+            self.logger.warning(
+                "No ground truth data available for Bragg peak "
+                "analysis. Skipping Bragg peak metrics."
+            )
+            return None
+
+        # Bragg peak metrics require spatial coordinate
+        if "x" not in self.X_gen.columns or "x" not in self.X_input_gaps.columns:
+            self.logger.warning(
+                "Spatial coordinate 'x' not found. Cannot compute Bragg peak metrics."
+            )
+            return None
+
+        # Get features to analyze (exclude 'x' coordinate)
+        # Only analyze features with LET distributions showing Bragg peaks
+        # (LTT, LDT, proton_*). While all features relate to secondary
+        # particles, only these exhibit characteristic Bragg peak patterns.
+        all_features = [col for col in self.X_input_gaps.columns if col != "x"]
+
+        features_to_compare = [
+            col
+            for col in all_features
+            if col.startswith("LTT")
+            or col.startswith("LDT")
+            or col.startswith("proton_")
         ]
 
-        return pd.DataFrame(metric_rows)
+        if not features_to_compare:
+            self.logger.warning(
+                "No features with Bragg peak LET distributions found "
+                "(LTT, LDT, proton_*). Skipping Bragg peak analysis."
+            )
+            return None
+
+        self.logger.info(
+            f"Computing Bragg peak metrics for {len(features_to_compare)} "
+            f"features with LET distributions: {features_to_compare}"
+        )
+
+        # Handle potential size mismatch
+        y_gen = self.X_gen.copy()
+        y_true = self.X_input_gaps.copy()
+
+        if len(y_true) != len(y_gen):
+            min_len = min(len(y_true), len(y_gen))
+            self.logger.warning(
+                f"Size mismatch in Bragg peak data: "
+                f"ground_truth={len(y_true)}, "
+                f"generated={len(y_gen)}. "
+                f"Truncating both to {min_len} samples for comparison."
+            )
+            y_true = y_true.iloc[:min_len]
+            y_gen = y_gen.iloc[:min_len]
+
+        # Initialize BraggPeakMetrics calculator
+        bragg_calc = BraggPeakMetrics(
+            spatial_coordinate="x",
+            falloff_range_percent=0.8,
+            min_peak_prominence=0.1,
+        )
+
+        # Compute all Bragg peak metrics
+        bragg_metrics = bragg_calc.compute_all(
+            data_true=y_true,
+            data_pred=y_gen,
+            features=features_to_compare,
+        )
+
+        return bragg_metrics
+
+    def evaluate_generated(self):
+        """
+        Comprehensive evaluation of VAE generation performance.
+
+        Computes four categories of metrics:
+        1. Reconstruction Metrics: How well the VAE reconstructs the
+           original low-resolution input
+        2. Interpolation Metrics: How well the VAE generates
+           intermediate (gap-filling) points
+        3. Bragg Peak Metrics: Domain-specific physical accuracy
+           metrics for hadrontherapy
+        4. Distribution Metrics: Statistical similarity between
+           generated and ground truth distributions
+
+        Returns:
+            dict: Dictionary containing:
+                - 'resolution_info': Dict with sampling/resolution
+                  metadata
+                - 'reconstruction': DataFrame with reconstruction
+                  metrics (MAE, RMSE, MAPE, R²)
+                - 'interpolation': DataFrame with interpolation metrics
+                  (MAE, RMSE, MAPE, R²)
+                - 'bragg_peak': DataFrame with Bragg peak metrics
+                  (Peak Position Error, Peak Height Error, FWHM Error,
+                  Distal Falloff Error)
+                - 'distribution': DataFrame with distribution-based
+                  metrics (Wasserstein, KS-test)
+        """
+        results = {}
+
+        # Add resolution/sampling information
+        results["resolution_info"] = self.get_resolution_info()
+
+        # 1. Reconstruction Metrics (always computed if X_rec available)
+        self.logger.info("Computing reconstruction metrics...")
+        reconstruction_metrics = self.compute_reconstruction_metrics()
+        if reconstruction_metrics is not None:
+            results["reconstruction"] = reconstruction_metrics
+            self.logger.info(
+                f"Reconstruction metrics computed for "
+                f"{len(reconstruction_metrics)} features"
+            )
+        else:
+            self.logger.warning("Reconstruction metrics not available")
+
+        # 2. Interpolation Metrics (only if ground truth gaps exist)
+        self.logger.info("Computing interpolation metrics...")
+        interpolation_metrics = self.compute_interpolation_metrics()
+        if interpolation_metrics is not None:
+            results["interpolation"] = interpolation_metrics
+            self.logger.info(
+                f"Interpolation metrics computed for "
+                f"{len(interpolation_metrics)} features"
+            )
+        else:
+            self.logger.info(
+                "Interpolation metrics not available (no ground truth in direct mode)"
+            )
+
+        # 3. Bragg Peak Metrics (only if ground truth gaps exist)
+        self.logger.info("Computing Bragg peak metrics...")
+        bragg_peak_metrics = self.compute_bragg_peak_metrics()
+        if bragg_peak_metrics is not None:
+            results["bragg_peak"] = bragg_peak_metrics
+            self.logger.info(
+                f"Bragg peak metrics computed for {len(bragg_peak_metrics)} features"
+            )
+        else:
+            self.logger.info(
+                "Bragg peak metrics not available (no ground truth in direct mode)"
+            )
+
+        # 4. Distribution Metrics (only if ground truth gaps exist)
+        if self.X_input_gaps is not None:
+            self.logger.info("Computing distribution metrics...")
+            wd = self.compute_wasserstein()
+            ks_p = self.compute_ks_test()
+
+            # Build distribution metrics DataFrame
+            metric_rows = [
+                {
+                    "Feature": feature,
+                    "Wasserstein Distance": wd.get(feature) if wd else None,
+                    "KS-Test p-value": ks_p.get(feature) if ks_p else None,
+                }
+                for feature in self.X_input_gaps.columns
+                if feature != "x"  # Exclude spatial coordinate
+            ]
+
+            results["distribution"] = pd.DataFrame(metric_rows)
+            self.logger.info(
+                f"Distribution metrics computed for {len(metric_rows)} features"
+            )
+        else:
+            self.logger.info(
+                "Distribution metrics not available (no ground truth in direct mode)"
+            )
+
+        # Return results dictionary
+        if not results:
+            self.logger.warning("No metrics were computed. Returning None.")
+            return None
+
+        return results
 
 
 def main(
@@ -680,10 +1003,11 @@ def main(
             logger=logger,
             description="Export to Let.out format",
         ):
-            generator.export_to_let_file(complete_upsampled_df, "Let_upsampled.out")
+            generator.export_to_let_file(complete_upsampled_df)
 
-        # Only run plotting and evaluation if enabled in config
-        if config.enable_plots:
+        # Initialize analyzer if plotting or analysis is enabled
+        gen_analyzer = None
+        if config.enable_plots or config.enable_analysis:
             with OptionalTimer(
                 enabled=config.enable_timing,
                 logger=logger,
@@ -697,8 +1021,11 @@ def main(
                     X_rec=reconstructed_df,
                     X_input=data_components["X_input"],
                     X_input_gaps=data_components["R_input"],
+                    voxel_size_um=data_components.get("voxel_in_um"),
                 )
 
+        # Generate plots if enabled
+        if config.enable_plots and gen_analyzer is not None:
             # Plot comparison
             # Use ground truth if available (downsample mode), otherwise use
             # the original input (direct mode)
@@ -724,7 +1051,10 @@ def main(
                         features_to_plot=config.features_to_plot,
                     )
 
-            # Evaluate generated data (returns None if no ground truth)
+        # Run metrics analysis if enabled
+        if config.enable_analysis and gen_analyzer is not None:
+            # Evaluate generated data (returns dict with multiple
+            # metric categories)
             with OptionalTimer(
                 enabled=config.enable_timing,
                 logger=logger,
@@ -732,14 +1062,97 @@ def main(
             ):
                 gen_metrics = gen_analyzer.evaluate_generated()
                 if gen_metrics is not None:
-                    logger.info(f"Generated metrics:\n{gen_metrics}")
+                    logger.info("\n" + "=" * 60)
+                    logger.info("GENERATION PERFORMANCE METRICS")
+                    logger.info("=" * 60)
+
+                    # Display resolution information
+                    if "resolution_info" in gen_metrics:
+                        res_info = gen_metrics["resolution_info"]
+                        logger.info("\n[Resolution & Sampling Information]")
+                        logger.info("-" * 60)
+                        logger.info(f"  Input Mode: {res_info['input_mode']}")
+                        logger.info(
+                            f"  Upsample Factor: {res_info['upsample_factor']}x"
+                        )
+                        if res_info["downsample_factor"] is not None:
+                            logger.info(
+                                f"  Downsample Factor: {res_info['downsample_factor']}x"
+                            )
+                        if res_info["voxel_size_um"] is not None:
+                            logger.info(
+                                f"  Original Voxel Size: "
+                                f"{res_info['voxel_size_um']:.3f} μm"
+                            )
+                            if "lowres_voxel_size_um" in res_info:
+                                logger.info(
+                                    f"  Low-Res Voxel Size: "
+                                    f"{res_info['lowres_voxel_size_um']:.3f} μm"
+                                )
+                            if res_info.get("target_voxel_size_um"):
+                                logger.info(
+                                    f"  Target Voxel Size: "
+                                    f"{res_info['target_voxel_size_um']:.3f} μm"
+                                )
+                        logger.info(
+                            f"  Samples - Input: {res_info['n_input']}, "
+                            f"Generated: {res_info['n_generated']}"
+                        )
+                        if "n_ground_truth" in res_info:
+                            logger.info(
+                                f"  Ground Truth Samples: {res_info['n_ground_truth']}"
+                            )
+                        logger.info("")
+
+                    # Display reconstruction metrics
+                    if "reconstruction" in gen_metrics:
+                        logger.info("\n[1] Reconstruction Metrics")
+                        logger.info("    (Low-res input → VAE → Reconstructed output)")
+                        logger.info("-" * 60)
+                        logger.info("\n" + gen_metrics["reconstruction"].to_string())
+                        logger.info("")
+
+                    # Display interpolation metrics
+                    if "interpolation" in gen_metrics:
+                        logger.info("\n[2] Interpolation Metrics")
+                        logger.info("    (Generated gaps vs. ground truth)")
+                        logger.info("-" * 60)
+                        logger.info("\n" + gen_metrics["interpolation"].to_string())
+                        logger.info("")
+
+                    # Display Bragg peak metrics
+                    if "bragg_peak" in gen_metrics:
+                        logger.info("\n[3] Bragg Peak Metrics")
+                        logger.info("    (Domain-specific hadrontherapy physics)")
+                        logger.info(
+                            "    Units: Position/FWHM in mm; Height in a.u.; Falloff dimensionless"
+                        )
+                        logger.info("-" * 60)
+                        logger.info("\n" + gen_metrics["bragg_peak"].to_string())
+                        logger.info("")
+
+                    # Display distribution metrics
+                    if "distribution" in gen_metrics:
+                        logger.info("\n[4] Distribution Metrics")
+                        logger.info("    (Statistical similarity tests)")
+                        logger.info("-" * 60)
+                        logger.info("\n" + gen_metrics["distribution"].to_string())
+                        logger.info("")
+
+                    logger.info("=" * 60 + "\n")
                 else:
-                    logger.info(
-                        "Evaluation skipped: No ground truth data available "
-                        "in direct input mode"
-                    )
-        else:
-            logger.info("Plotting and evaluation disabled (enable_plots=False)")
+                    logger.info("Evaluation skipped: No metrics computed")
+
+        # Log status messages for disabled features
+        if not config.enable_plots and not config.enable_analysis:
+            logger.info(
+                "Plotting and analysis disabled "
+                "(enable_plots=False, enable_analysis=False)"
+            )
+        elif not config.enable_plots:
+            logger.info("Plotting disabled (enable_plots=False)")
+        elif not config.enable_analysis:
+            logger.info("Metrics analysis disabled (enable_analysis=False)")
 
 
 if __name__ == "__main__":

@@ -25,10 +25,15 @@ The **super-resolution task** involves:
   `vae_optimization.py`
 - 🎯 Study of various loss functions and network configurations
 - 📈 Performance visualization and EDA (via Matplotlib and Optuna)
+- 📊 Comprehensive metrics evaluation with point-wise spatial fidelity
+  metrics (MAE, RMSE, MAPE, R²) and domain-specific Bragg peak metrics
+  (peak position, height, FWHM, distal falloff) for reconstruction and
+  interpolation quality
 - 📦 Utilities for dataset I/O, logging, and evaluation included in `utils/`
 - 🔽 Data downsampling tool for creating low-resolution datasets from
   high-resolution simulations
 - ⚙️ Profile-based configuration system for flexible generation workflows
+- 🎛️ Independent control of analysis and plotting for optimized workflows
 
 ---
 
@@ -38,6 +43,7 @@ The **super-resolution task** involves:
 src/
 ├── vae_training.py                    # Main VAE training script
 ├── vae_generate.py                    # Generate super-resolved outputs
+├── vae_generate_multi_factor.py       # Batch generation across multiple upsampling factors
 ├── vae_downsample.py                  # Downsample high-resolution data
 ├── vae_optimization.py                # Hyperparameter optimization (Optuna)
 ├── vae_optimization_analysis.py       # Analysis of optimization runs
@@ -47,7 +53,10 @@ src/
 ├── core/                              # Core VAE pipeline components
 │   ├── base_pipeline.py               # Base class for VAE operations
 │   ├── model_builder.py               # Factory for building VAE models
-│   ├── training_utils.py              # Training utilities and loss functions
+│   ├── losses.py                      # Loss functions (VAE, beta-VAE variants)
+│   ├── metrics.py                     # Evaluation metrics (MAE, RMSE, MAPE, R²)
+│   ├── bragg_peak_metrics.py          # Bragg peak metrics for hadrontherapy
+│   ├── training_utils.py              # Training utilities
 │   ├── models/                        # Custom PyTorch modules
 │   │   ├── autoencoder.py             # AutoEncoder implementation
 │   │   └── activations.py             # Custom activations (PELU, ShiftedSoftplus)
@@ -145,6 +154,27 @@ python src/vae_generate.py --upsample_factor 50
 python src/vae_generate.py --profile direct --upsample_factor 50 \
   --lowres_data_file Let_downsampled_10x.out
 ```
+
+#### Batch Generation Across Multiple Factors
+
+For systematic comparison across different upsampling factors, use the
+multi-factor batch script:
+
+```bash
+# Run generation with factors: 10, 20, 50, 100
+python src/vae_generate_multi_factor.py
+```
+
+This script automatically:
+- Runs `vae_generate.py` sequentially for each upsampling factor
+- Updates the generation profile configuration between runs
+- Saves factor-specific outputs to `vae_generate_output/`:
+  - `Let_upsampled_factor_10.out`, `Let_upsampled_factor_20.out`, etc.
+  - `vae_generate_factor_10.txt`, `vae_generate_factor_20.txt`, etc.
+    (execution logs)
+- Restores original configuration after completion
+
+Edit the `FACTORS` list in the script to customize which factors to test.
 
 ### 4. Optimize Hyperparameters
 

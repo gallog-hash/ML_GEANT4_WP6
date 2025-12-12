@@ -199,6 +199,11 @@ vae_generate_output/
 # Ignore vae_generate_plots directory
 vae_generate_plots/
 
+# Ignore vae_generate analysis output files
+vae_generate_metrics_output.txt
+vae_analysis_only_output.txt
+vae_bragg_peak_test_output.txt
+
 # Ignore vae_downsample_output directory
 vae_downsample_output/
 
