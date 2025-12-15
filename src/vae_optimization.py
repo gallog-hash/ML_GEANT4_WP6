@@ -329,7 +329,7 @@ class VAEOptimizer(BaseVAEPipeline):
             float: Final validation loss for the trial.
         """
         # Tune batch size as a hyperparameter
-        batch_size = trial.suggest_categorical("batch_size", [64, 100, 128])
+        batch_size = trial.suggest_categorical("batch_size", [128, 256, 512, 1024])
 
         # Create DataLoaders dynamically based on tuned batch size
         loaders = create_data_loaders(
